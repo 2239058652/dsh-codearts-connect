@@ -4,6 +4,8 @@ declare const styles: {
   readonly "accountEntry": string
   readonly "accountHint": string
   readonly "accountInfo": string
+  readonly "accountModeRow": string
+  readonly "accountModeText": string
   readonly "accountName": string
   readonly "accountNameRow": string
   readonly "accountRow": string
@@ -33,6 +35,13 @@ declare const styles: {
   readonly "creditRows": string
   readonly "danger": string
   readonly "desc": string
+  readonly "dialog": string
+  readonly "dialogActions": string
+  readonly "dialogHead": string
+  readonly "dialogHint": string
+  readonly "dialogOverlay": string
+  readonly "dialogTitle": string
+  readonly "dialogUrl": string
   readonly "error": string
   readonly "expiryLabel": string
   readonly "expiryRow": string

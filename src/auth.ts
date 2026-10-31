@@ -6,7 +6,7 @@
  * 并提供自动续期。同时也保留"手动粘贴 security_token"的兜底（但无 AK/SK 时只能
  * 作为降级态，聊天会被 APIG 拒）。
  *
- * @module dsh-codearts/auth
+ * @module dsh-codearts-connect/auth
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
@@ -630,7 +630,7 @@ export class CodeArtsAccountStore {
   /**
    * 把一条已有账号迁移到它的稳定身份键上（同键则合并）。
    *
-   * 用在两处：登录后回填身份（老条目已经存在时合并掉），以及 `dsh-codearts identity --fix`
+   * 用在两处：登录后回填身份（老条目已经存在时合并掉），以及 `dsh-codearts-connect identity --fix`
    * 清理历史遗留的重复条目。合并时保留 `storedAt` 较新的一份凭证，位置沿用目标键原有的顺序。
    *
    * @returns 迁移结果：`merged` 表示并入了已存在的那条，`moved` 表示只换了键，`noop` 表示键没变

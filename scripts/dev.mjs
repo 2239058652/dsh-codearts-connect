@@ -197,7 +197,7 @@ function startLibWatcher(onSettled) {
 function main() {
   if (once) process.exit(runOnce())
 
-  console.log('dsh-codearts dev')
+  console.log('dsh-codearts-connect dev')
   console.log(`  profile:    ${profileDir}`)
   console.log('  宿主侧改动: 需要 hmr 模块监听（node scripts/hmr.mjs on）才会热重载')
   console.log('  客户端改动: 由 dsh-client-hmr 自动替换，无需刷新页面')

@@ -11,7 +11,7 @@
  * shared secret as `Authorization: Bearer`. Any local attacker hitting the
  * port still cannot forge the secret.
  *
- * @module dsh-codearts/shim
+ * @module dsh-codearts-connect/shim
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto'
@@ -65,6 +65,13 @@ export interface CodeArtsShimOptions {
    * （底部积分条旁边展示「排队第 N 位」）。
    */
   queue?: CodeArtsQueueGate
+  /**
+   * 用户在设置卡片里手动指定的账号 id（空 = 自动轮转）。
+   *
+   * 只作为**首选**：指定的号不健康、在冷却或本地槽位已满时，仍按池的规则换号，
+   * 否则一条消息会因为「选中的号刚好忙」直接失败，这比自动换号更难用。
+   */
+  preferredAccount?: () => string | undefined
   logger?: ShimLogger
 }
 
@@ -358,7 +365,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       if (rate !== undefined) {
         reader.releaseLock()
         await result.stream.cancel().catch(() => {})
-        logger?.warn(`dsh-codearts: ${prepared.model} 首帧被判限流（${rate.code}），进入本地排队`)
+        logger?.warn(`dsh-codearts-connect: ${prepared.model} 首帧被判限流（${rate.code}），进入本地排队`)
         return { prepared, result: { ok: false, kind: 'soft_rate', status: 429, message: `${rate.code}: ${rate.message}` } }
       }
       const shouldHeal = heal < MAX_CEILING_HEALS && head !== undefined && isParamInvalidFrame(new TextDecoder().decode(head))
@@ -368,7 +375,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       if (degradeTokenCeiling(prepared.model) === 0) {
         return { prepared, result: { ok: false, kind: 'client', status: 400, message: `${prepared.model}: max_tokens 已降到下限仍被判参数非法` } }
       }
-      logger?.warn(`dsh-codearts: ${prepared.model} 被判参数非法，max_tokens 降档到 ${maxTokensCeilingFor(prepared.model)} 后重发`)
+      logger?.warn(`dsh-codearts-connect: ${prepared.model} 被判参数非法，max_tokens 降档到 ${maxTokensCeilingFor(prepared.model)} 后重发`)
     }
   }
 
@@ -460,6 +467,11 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     }
     pool.sync(ids)
 
+    // 手动指定只在**第一次**尝试时生效：指定的号撞上并发上限/坏掉之后，后续
+    // 尝试仍走正常轮转，避免「指定了一个号就再也问不动」。
+    const preferred = options.preferredAccount?.()
+    const preferredId = preferred !== undefined && ids.includes(preferred) ? preferred : undefined
+
     // 先按账号轮换：某个账号的会话槽位被占（要 ~52s 才释放）就换下一个用，
     // 而不是让用户干等 —— 这正是「打断后重新提问」卡住的根因。
     const tried = new Set<string>()
@@ -471,7 +483,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     let lastMessage = ''
 
     for (let attempt = 0; attempt < MAX_ROTATE; attempt += 1) {
-      const id = pool.pick(tried)
+      const id = pool.pick(tried, attempt === 0 ? preferredId : undefined)
       if (id === undefined) break
       tried.add(id)
       if (!pool.acquire(id)) continue
@@ -604,7 +616,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       if (ev.error === undefined) return
       const code = String(ev.error.code ?? '')
       const message = String(ev.error.message ?? '').slice(0, 200)
-      logger?.error(`dsh-codearts: 上游流内报错 model=${model} code=${code} msg=${message}`)
+      logger?.error(`dsh-codearts-connect: 上游流内报错 model=${model} code=${code} msg=${message}`)
     } catch {
       // 帧被切断或不是 JSON：忽略
     }
@@ -662,7 +674,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     } catch (error: unknown) {
       // 用户点「停止生成」也会走到这里，那不是故障，别刷日志。
       if (!signal.aborted) {
-        logger?.warn('dsh-codearts: upstream stream failed mid-flight', error)
+        logger?.warn('dsh-codearts-connect: upstream stream failed mid-flight', error)
       }
       finish()
     }

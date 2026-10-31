@@ -16,7 +16,7 @@
 /** 标记属性：带上它的节点被我们隐藏。 */
 export const SUPPRESS_ATTR = 'data-codearts-dock-suppressed'
 /** 注入的那条样式表 id。 */
-export const SUPPRESS_STYLE_ID = 'dsh-codearts-dock-suppress'
+export const SUPPRESS_STYLE_ID = 'dsh-codearts-connect-dock-suppress'
 
 /** 扫描时需要的最小结构 —— `Element` 天然满足。 */
 export interface DockNode {

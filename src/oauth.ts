@@ -8,7 +8,7 @@
  *
  * 刷新：refresh_token 与 client_id、DPoP 私钥三者绑定，刷新时原样复用。
  *
- * @module dsh-codearts/oauth
+ * @module dsh-codearts-connect/oauth
  */
 
 import { createHash, randomBytes } from 'node:crypto'

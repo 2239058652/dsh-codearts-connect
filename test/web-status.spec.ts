@@ -32,6 +32,7 @@ import { CodeArtsAccountStore, credentialFromOAuth } from '../src/auth.ts'
 import { clearBenefitBlocked, isBenefitBlocked, markBenefitBlocked, setDiscoveredBenefitModels } from '../src/catalog.ts'
 import {
   CODEARTS_ACCOUNTS_PATH,
+  CODEARTS_ACCOUNT_PREFERENCE_PATH,
   CODEARTS_CLAIM_PATH,
   CODEARTS_LOGIN_PATH,
   CODEARTS_LOGIN_STATUS_PATH,
@@ -133,7 +134,7 @@ function credential(userId: string) {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-routes-'))
+  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-routes-'))
   store = new CodeArtsAccountStore(join(dir, '.codearts-accounts.json'))
   routes = mountRoutes({ store, models: () => [] })
   startLoginMock.mockReset()
@@ -312,6 +313,85 @@ describe('DELETE /api/codearts/accounts', () => {
   it('requires a loopback Origin for the status route too', async () => {
     const res = await call(routes.get(CODEARTS_ACCOUNTS_PATH)!, 'DELETE', `${CODEARTS_ACCOUNTS_PATH}?id=x`, { origin: LOOPBACK })
     expect(res.status).toBe(200)
+  })
+})
+
+describe('POST /api/codearts/account-preference', () => {
+  const mountWithPreference = (): { current: () => string } => {
+    let preferred = ''
+    routes = mountRoutes({
+      store,
+      models: () => [],
+      preferredAccount: () => (preferred === '' ? undefined : preferred),
+      setPreferredAccount: async id => { preferred = id; return true },
+    })
+    return { current: () => preferred }
+  }
+
+  it('persists the chosen account and exposes it in status', async () => {
+    await store.upsert(credential('uid-a'))
+    await store.upsert(credential('uid-b'))
+    const preference = mountWithPreference()
+
+    const res = await call(
+      routes.get(CODEARTS_ACCOUNT_PREFERENCE_PATH)!,
+      POST,
+      CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      { 'content-type': 'application/json' },
+      JSON.stringify({ id: 'uid-b' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body?.preferredAccountId).toBe('uid-b')
+    expect(preference.current()).toBe('uid-b')
+    const status = await call(routes.get(CODEARTS_STATUS_PATH)!, GET, CODEARTS_STATUS_PATH)
+    expect(status.body?.preferredAccountId).toBe('uid-b')
+  })
+
+  it('clears the preference with id null', async () => {
+    await store.upsert(credential('uid-a'))
+    const preference = mountWithPreference()
+    await call(
+      routes.get(CODEARTS_ACCOUNT_PREFERENCE_PATH)!,
+      POST,
+      CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      { 'content-type': 'application/json' },
+      JSON.stringify({ id: 'uid-a' }),
+    )
+    const res = await call(
+      routes.get(CODEARTS_ACCOUNT_PREFERENCE_PATH)!,
+      POST,
+      CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      { 'content-type': 'application/json' },
+      JSON.stringify({ id: null }),
+    )
+    expect(res.status).toBe(200)
+    expect(preference.current()).toBe('')
+  })
+
+  it('rejects an account id that is not stored', async () => {
+    await store.upsert(credential('uid-a'))
+    const preference = mountWithPreference()
+    const res = await call(
+      routes.get(CODEARTS_ACCOUNT_PREFERENCE_PATH)!,
+      POST,
+      CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      { 'content-type': 'application/json' },
+      JSON.stringify({ id: 'missing' }),
+    )
+    expect(res.status).toBe(400)
+    expect(preference.current()).toBe('')
+  })
+
+  it('answers 403 when the host has no settings provider', async () => {
+    const res = await call(
+      routes.get(CODEARTS_ACCOUNT_PREFERENCE_PATH)!,
+      POST,
+      CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      { 'content-type': 'application/json' },
+      JSON.stringify({ id: null }),
+    )
+    expect(res.status).toBe(403)
   })
 })
 

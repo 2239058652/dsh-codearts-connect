@@ -42,6 +42,21 @@ describe('selection', () => {
     expect(pool.hasUsable()).toBe(false)
   })
 
+  it('honours a manually preferred account', () => {
+    const pool = poolOf(['a', 'b'])
+    // 刚用过 a，正常轮转该选 b；手动指定 b 时结果一样，指定 a 时必须选 a。
+    pool.acquire('a')
+    pool.release('a')
+    expect(pool.pick(new Set(), 'a')).toBe('a')
+    expect(pool.pick(new Set(), 'b')).toBe('b')
+  })
+
+  it('falls back to rotation when the preferred account is unavailable', () => {
+    const pool = poolOf(['a', 'b'])
+    pool.disable('b', 'token rejected')
+    expect(pool.pick(new Set(), 'b')).toBe('a')
+  })
+
   it('release never drives the count below zero', () => {
     const pool = poolOf(['a'])
     pool.release('a')

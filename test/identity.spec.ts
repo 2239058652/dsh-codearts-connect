@@ -52,7 +52,7 @@ describe('CodeArtsAccountStore.adoptIdentity', () => {
   let store: CodeArtsAccountStore
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-identity-'))
+    dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-identity-'))
     store = new CodeArtsAccountStore(join(dir, '.codearts-accounts.json'))
   })
 
@@ -124,7 +124,7 @@ describe('upsertFromOAuth with an identity', () => {
   })
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-login-'))
+    dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-login-'))
     store = new CodeArtsAccountStore(join(dir, '.codearts-accounts.json'))
   })
 

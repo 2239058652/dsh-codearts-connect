@@ -8,7 +8,7 @@
  * 响应 SSE 也是 OpenAI 增量（choices[].delta.content），但含有华为特有事件
  * （累计全文快照 + 结束态 error_code），本模块做兼容转换。
  *
- * @module dsh-codearts/upstream
+ * @module dsh-codearts-connect/upstream
  */
 
 import { createHash, randomBytes } from 'node:crypto'
@@ -610,7 +610,7 @@ export async function chatStream(
   const model = prepared.model
   const upstream = resp.body
   if (!upstream) {
-    return { ok: false, kind: 'server', status: 0, message: 'dsh-codearts: 上游无响应体' }
+    return { ok: false, kind: 'server', status: 0, message: 'dsh-codearts-connect: 上游无响应体' }
   }
 
   const reader = upstream.getReader()

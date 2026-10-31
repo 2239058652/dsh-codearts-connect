@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * dsh-codearts CLI: sign-in state, diagnostics and sign-out.
+ * dsh-codearts-connect CLI: sign-in state, diagnostics and sign-out.
  *
- *   dsh plugin --profile web exec dsh-codearts status        # sign-in state + seed models
- *   dsh plugin --profile web exec dsh-codearts status --json # machine-readable
- *   dsh plugin --profile web exec dsh-codearts models        # discover the account's real models
- *   dsh plugin --profile web exec dsh-codearts models --json # machine-readable
- *   dsh plugin --profile web exec dsh-codearts usage         # local token accounting
- *   dsh plugin --profile web exec dsh-codearts usage --json  # machine-readable
- *   dsh plugin --profile web exec dsh-codearts identity      # stable upstream user ids per account
- *   dsh plugin --profile web exec dsh-codearts identity --fix # merge duplicate entries onto them
- *   dsh plugin --profile web exec dsh-codearts doctor        # secret-free diagnostics
- *   dsh plugin --profile web exec dsh-codearts logout        # drop the plugin's credential
+ *   dsh plugin --profile web exec dsh-codearts-connect status        # sign-in state + seed models
+ *   dsh plugin --profile web exec dsh-codearts-connect status --json # machine-readable
+ *   dsh plugin --profile web exec dsh-codearts-connect models        # discover the account's real models
+ *   dsh plugin --profile web exec dsh-codearts-connect models --json # machine-readable
+ *   dsh plugin --profile web exec dsh-codearts-connect usage         # local token accounting
+ *   dsh plugin --profile web exec dsh-codearts-connect usage --json  # machine-readable
+ *   dsh plugin --profile web exec dsh-codearts-connect identity      # stable upstream user ids per account
+ *   dsh plugin --profile web exec dsh-codearts-connect identity --fix # merge duplicate entries onto them
+ *   dsh plugin --profile web exec dsh-codearts-connect doctor        # secret-free diagnostics
+ *   dsh plugin --profile web exec dsh-codearts-connect logout        # drop the plugin's credential
  *
  * `models` asks the upstream for the account's real catalog (built-in, limited-time
  * benefit and agent-center sources) instead of printing the hand-maintained seed —
@@ -29,7 +29,7 @@
  * so its output is safe to paste into a bug report. `logout` removes only this
  * plugin's own credential copy; nothing outside the plugin is touched.
  *
- * @module dsh-codearts/bin
+ * @module dsh-codearts-connect/bin
  */
 
 import { existsSync, statSync } from 'node:fs'
@@ -113,7 +113,7 @@ async function status(jsonOutput: boolean): Promise<number> {
     signable: accounts.some(account => account.signable),
     accounts,
     // 目录不在 CLI 侧缓存，也不拿参数表冒充「可用模型」：schemaVersion 6 起这个字段
-    // 整个去掉了，要看上游此刻给了什么，跑 `dsh-codearts models`（它现问一次上游）。
+    // 整个去掉了，要看上游此刻给了什么，跑 `dsh-codearts-connect models`（它现问一次上游）。
   }
   if (cred !== undefined) {
     if (cred.label !== undefined) out.label = cred.label
@@ -136,7 +136,7 @@ async function status(jsonOutput: boolean): Promise<number> {
   } else {
     process.stdout.write('not signed in (no account stored; sign in from the CodeArts settings card)\n')
   }
-  process.stdout.write('models: CLI 不缓存目录，跑 `dsh-codearts models` 现问上游\n')
+  process.stdout.write('models: CLI 不缓存目录，跑 `dsh-codearts-connect models` 现问上游\n')
   return out.signedIn ? 0 : 1
 }
 
@@ -396,7 +396,7 @@ async function doctor(jsonOutput: boolean): Promise<number> {
     return hints.length === 0 ? 0 : 1
   }
 
-  process.stdout.write(`dsh-codearts ${out.version}  (node ${out.node}, ${out.platform})\n`)
+  process.stdout.write(`dsh-codearts-connect ${out.version}  (node ${out.node}, ${out.platform})\n`)
   process.stdout.write(`accounts: ${out.authPath}\n`)
   process.stdout.write(`  file exists : ${out.authFileExists ? 'yes' : 'no'}${exists ? ` (${statSync(accountsPath).size} bytes)` : ''}\n`)
   process.stdout.write(`  accounts    : ${accounts.length}\n`)
@@ -433,11 +433,11 @@ async function main(): Promise<void> {
   const raw = positional[0] ?? 'status'
   const actions: readonly Action[] = ['doctor', 'identity', 'logout', 'models', 'status', 'usage']
   if (!actions.includes(raw as Action)) {
-    process.stderr.write(`dsh-codearts: expected doctor, identity, logout, models, status, or usage; got ${JSON.stringify(raw)}\n`)
+    process.stderr.write(`dsh-codearts-connect: expected doctor, identity, logout, models, status, or usage; got ${JSON.stringify(raw)}\n`)
     process.exit(2)
   }
   if (unknown.length > 0) {
-    process.stderr.write(`dsh-codearts: unknown flag ${JSON.stringify(unknown[0])} (only --json and --fix are supported)\n`)
+    process.stderr.write(`dsh-codearts-connect: unknown flag ${JSON.stringify(unknown[0])} (only --json and --fix are supported)\n`)
     process.exit(2)
   }
 

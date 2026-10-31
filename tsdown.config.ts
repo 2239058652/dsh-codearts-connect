@@ -59,6 +59,6 @@ export default defineConfig([
     // 样式走 dsh-css（下面 plugins 里），不用 tsdown 的 css 选项：
     // 那个要 @tsdown/css、仍是 experimental，且原来这行 `css: 'external'`
     // 类型上就不合法（要对象），只是没人检查这个文件所以一直没响。
-    plugins: [dshCss({ packageName: 'dsh-codearts' })],
+    plugins: [dshCss({ packageName: 'dsh-codearts-connect' })],
   },
 ])

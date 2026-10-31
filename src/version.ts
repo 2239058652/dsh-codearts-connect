@@ -9,7 +9,7 @@
  * `typeof === 'string'` guard keeps the bundle harmless if a build forgets
  * to define it (falls back to a clearly-dev marker).
  *
- * @module dsh-codearts/version
+ * @module dsh-codearts-connect/version
  */
 
 declare const __DSH_CODEARTS_VERSION__: string

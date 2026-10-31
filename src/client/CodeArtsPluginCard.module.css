@@ -517,3 +517,93 @@
   outline: none;
   border-color: var(--dsw-alias-state-business-primary);
 }
+
+/* 手动指定账号后，列表下方那条「当前优先 + 恢复自动」的说明行。 */
+.accountModeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2);
+  padding: 10px 12px;
+}
+
+.accountModeText {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* 添加账号的授权链接弹框。fixed 定位脱离卡片，避免被设置页的滚动容器裁掉。 */
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog {
+  box-sizing: border-box;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-settings-card-fill);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  padding: 16px;
+}
+
+.dialogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.dialogHint {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  margin: 10px 0 0;
+}
+
+.dialogUrl {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  margin-top: 10px;
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  word-break: break-all;
+}
+
+.dialogUrl:focus {
+  outline: none;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}

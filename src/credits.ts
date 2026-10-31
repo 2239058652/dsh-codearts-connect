@@ -17,7 +17,7 @@
  * 卡片每次刷新都会问一次状态，所以这里带 TTL 缓存 + 单飞：命中缓存不打上游，
  * 失败也缓存一小段，免得上游抽风时每次刷新都要等一次超时。
  *
- * @module dsh-codearts/credits
+ * @module dsh-codearts-connect/credits
  */
 
 import {

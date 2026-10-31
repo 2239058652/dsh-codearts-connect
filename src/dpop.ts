@@ -5,7 +5,7 @@
  * 关键约束：refresh_token 与首次换取时的 DPoP 公钥绑定，刷新时必须复用同一
  * 私钥，否则 STS 报 InvalidDPoPHeader。因此该私钥必须随 refresh_token 一起落盘。
  *
- * @module dsh-codearts/dpop
+ * @module dsh-codearts-connect/dpop
  */
 
 import { createPrivateKey, createSign, generateKeyPairSync, randomBytes } from 'node:crypto'

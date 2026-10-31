@@ -10,7 +10,7 @@
  * This module detects which generation is installed at runtime, so one build
  * keeps working on every supported DSH host. Adapted from dsh-codebuddy-cli.
  *
- * @module dsh-codearts/settings-compat
+ * @module dsh-codearts-connect/settings-compat
  */
 
 import type { Context } from '@deepseek-ai/cordis'

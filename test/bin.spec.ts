@@ -45,7 +45,7 @@ let home: string
 let authPath: string
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), 'dsh-codearts-cli-'))
+  home = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-cli-'))
   authPath = join(home, '.codearts-auth.json')
 })
 
@@ -163,7 +163,7 @@ describe('logout', () => {
   // given, and nothing else.
   it('only touches the credential inside the given DSH_HOME', async () => {
     await seed()
-    const other = await mkdtemp(join(tmpdir(), 'dsh-codearts-cli-other-'))
+    const other = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-cli-other-'))
     try {
       const otherAuth = join(other, '.codearts-auth.json')
       await writeFile(otherAuth, JSON.stringify({ token: 'OTHER', storedAt: Date.now() }), 'utf8')

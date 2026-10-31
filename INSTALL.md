@@ -1,4 +1,4 @@
-# dsh-codearts 安装与验证指引
+# dsh-codearts-connect 安装与验证指引
 
 [English](./INSTALL.en.md) | 中文
 
@@ -8,9 +8,9 @@
 
 把插件复制并登记进 DSH 的 desktop profile，共三步：
 
-- 包本体放到 `<用户目录>\.dsh\profiles\desktop\node_modules\dsh-codearts\`
+- 包本体放到 `<用户目录>\.dsh\profiles\desktop\node_modules\dsh-codearts-connect\`
   （含 `lib/`、`cordis.patch.yml`、`package.json`、`README.md`、`LICENSE`）
-- 在 `profiles/desktop/package.json` 的 `dependencies` 声明 `dsh-codearts`
+- 在 `profiles/desktop/package.json` 的 `dependencies` 声明 `dsh-codearts-connect`
 - 在 `node_modules/.package-map.json` 与 `node_modules/.modules.yaml` 登记
 
 `scripts/deploy.mjs` 会自动完成这三步（并只在需要时写入 profiles 下的 manifest）：
@@ -28,7 +28,7 @@ node scripts/deploy.mjs [profileDir]     # profileDir 默认 <用户目录>/.dsh
 
 1. **完全退出** DeepSeek Harness（托盘退出，确保进程不在）。
 2. 重新打开 DSH。
-3. 进入 **设置 → 插件/Providers**，应当能看到 `dsh-codearts`（CodeArts Connect）已注册。
+3. 进入 **设置 → 插件/Providers**，应当能看到 `dsh-codearts-connect`（CodeArts Connect）已注册。
 4. 进入 **设置 → CodeArts 卡片**（或 Providers 里的 codearts）：
    - 点「使用华为云账号登录」→ 浏览器打开授权页 → 华为云账号登录；
    - 登录成功会自动跳回本机回调，凭证写入 `<用户目录>\.dsh\.codearts-auth.json`。
@@ -40,24 +40,24 @@ node scripts/deploy.mjs [profileDir]     # profileDir 默认 <用户目录>/.dsh
 按顺序排查：
 
 1. 确认 DSH 完全退出后再启动（热重载不扫描新插件）。
-2. 看 `profiles/desktop/node_modules/dsh-codearts/lib/index.mjs` 是否存在。
+2. 看 `profiles/desktop/node_modules/dsh-codearts-connect/lib/index.mjs` 是否存在。
 3. 看 DSH 启动日志（如 `profiles/desktop/.plugin-manager/logs/`）里有没有
-   `dsh-codearts` 相关的报错；把报错贴给开发者。
-4. 若需要彻底卸载：删除 `node_modules/dsh-codearts` 目录，并从
+   `dsh-codearts-connect` 相关的报错；把报错贴给开发者。
+4. 若需要彻底卸载：删除 `node_modules/dsh-codearts-connect` 目录，并从
    `profiles/desktop/package.json`、`node_modules/.package-map.json`、
-   `node_modules/.modules.yaml` 里移除 `dsh-codearts` 条目（备份文件在，照着删即可）。
+   `node_modules/.modules.yaml` 里移除 `dsh-codearts-connect` 条目（备份文件在，照着删即可）。
 
 ## 四、在其他机器 / 干净重装
 
 1. 构建产物：`pnpm install && pnpm run build`（输出在 `lib/`）。
 2. 把本插件的 `package.json` + `lib/` + `cordis.patch.yml` 整体复制到
-   目标 DSH 的 `profiles/<profile>/node_modules/dsh-codearts/`。
-3. 在目标 profile 的 `package.json` 的 `dependencies` 增加 `"dsh-codearts": "0.1.0"`。
+   目标 DSH 的 `profiles/<profile>/node_modules/dsh-codearts-connect/`。
+3. 在目标 profile 的 `package.json` 的 `dependencies` 增加 `"dsh-codearts-connect": "1.3.0"`。
 4. 在 `node_modules/.package-map.json` 增加
-   `"dsh-codearts": {"url":"./dsh-codearts","dependencies":{"dsh-codearts":"dsh-codearts"}}`
-   并在 `"."` 的 `dependencies` 里加 `"dsh-codearts":"dsh-codearts"`。
+   `"dsh-codearts-connect": {"url":"./dsh-codearts-connect","dependencies":{"dsh-codearts-connect":"dsh-codearts-connect"}}`
+   并在 `"."` 的 `dependencies` 里加 `"dsh-codearts-connect":"dsh-codearts-connect"`。
 5. 在 `node_modules/.modules.yaml` 的 `hoistedLocations` 增加
-   `"dsh-codearts@0.1.0": ["node_modules\\dsh-codearts"]`。
+   `"dsh-codearts-connect@1.3.0": ["node_modules\\dsh-codearts-connect"]`。
 6. 重启 DSH。
 
 ## 五、技术链路（已独立验证通过）
@@ -81,10 +81,10 @@ node scripts/deploy.mjs [profileDir]     # profileDir 默认 <用户目录>/.dsh
   头，可零成本使用。商业模型（GLM-5.2 等）同样正常。
 - 模型清单为**动态发现**（内置 `/v1/model/builtin`、限时福利 `/api/v1/gateway/config`、
   agent-center 的 `gpts.models` 三路合并），启动与每小时各刷新一次；任一路失败或未登录时
-  退回内置种子清单。用 `dsh-codearts models` 可看上游真实返回。
+  退回内置种子清单。用 `dsh-codearts-connect models` 可看上游真实返回。
 - 上游标称的 `max_tokens` 高于聊天端点实际接受的量（福利网关标 393216，端点实测 65536 就报
   `InferHub.001001005.400`），插件按实测上限下发，见 `MEASURED_MAX_TOKENS`。
-- 卡片与 `dsh-codearts usage` 里的用量是**本机账本**（`$DSH_HOME/.codearts-usage.json`，按天保留
+- 卡片与 `dsh-codearts-connect usage` 里的用量是**本机账本**（`$DSH_HOME/.codearts-usage.json`，按天保留
   60 天）：CodeArts 没有额度接口，官方明细在 `codearts.huaweicloud.com/portal/settings/personal-usage`。
 - 凭证有效期约 24 小时，过期后插件会自动用 refresh_token 续期。
 - 无头环境无法渲染 DSH GUI，故 GUI 内的端到端渲染需你在本机确认。
@@ -106,7 +106,7 @@ node scripts/deploy.mjs [profileDir]     # profileDir 默认 <用户目录>/.dsh
 
 ## 八、更新到 1.1.3+ 报「更新失败：`ERR_PNPM_IGNORED_BUILDS`」
 
-不是安装失败 —— 看输出里的 `+ dsh-codearts 1.1.3`，包其实已经装好了。报错的是
+不是安装失败 —— 看输出里的 `+ dsh-codearts-connect 1.1.3`，包其实已经装好了。报错的是
 pnpm 11 的收尾检查：1.1.3 起插件自带一份 `@earendil-works/pi-ai`，它间接依赖
 `@google/genai` 和 `protobufjs`，这两个包带安装期脚本；pnpm 11 默认拦截未批准的依赖
 脚本（`strictDepBuilds`）并以**非零码退出**，DSH 更新器据此判为失败。这两个脚本一个

@@ -8,7 +8,7 @@ import { CodeArtsUsageTracker, codeartsUsagePath, localDateKey, normalizeUsage, 
 let dir: string
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-usage-'))
+  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-usage-'))
 })
 
 afterEach(async () => {

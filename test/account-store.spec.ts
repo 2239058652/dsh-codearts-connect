@@ -50,7 +50,7 @@ function credential(userId: string, overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-accounts-'))
+  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-accounts-'))
   accountsPath = join(dir, '.codearts-accounts.json')
   legacyPath = join(dir, '.codearts-auth.json')
   refreshTokenMock.mockReset()

@@ -9,7 +9,7 @@
  *   - `@deepseek-ai/dsh-hmr` 支持把关心的目录加进 `root`；条目配置来自 profile patch
  *     时是「整份 config 替换」而不是合并，所以 root 和 ignored 必须一起给全。
  *   - `ignored` 的默认值里含一条排除 node_modules 的 glob，且是按「相对 base 目录」
- *     做 picomatch 匹配 —— 插件恰好装在 `node_modules/dsh-codearts`，正好被默认值
+ *     做 picomatch 匹配 —— 插件恰好装在 `node_modules/dsh-codearts-connect`，正好被默认值
  *     排除掉，所以覆盖行里必须把 ignored 显式写成空表。
  *   - 改动只有落到**已加载模块的原地覆盖**上才会被热重载（hmr 只监听 chokidar 的
  *     `change`，不处理 add/unlink），所以 deploy 用的是原地同步。
@@ -20,8 +20,8 @@
  *   node scripts/hmr.mjs status  [profileDir]   # 看当前状态
  *
  * ⚠️ 开启期间**不要**用插件管理器/npm 升级本插件：宿主为热重载监视着
- * `node_modules/dsh-codearts`，目录被占用后 pnpm 替换版本时会报
- * `ERR_PNPM_EPERM ... rename 'dsh-codearts_tmp_*' -> 'dsh-codearts'`，
+ * `node_modules/dsh-codearts-connect`，目录被占用后 pnpm 替换版本时会报
+ * `ERR_PNPM_EPERM ... rename 'dsh-codearts-connect_tmp_*' -> 'dsh-codearts-connect'`，
  * 安装失败后插件管理器还会把依赖条目一起回滚掉（表现为「插件被移除」）。
  * 升级前先 `hmr.mjs off`，装完再按需开回来。
  *
@@ -34,7 +34,7 @@ import { pathToFileURL } from 'node:url'
 import { defaultProfileDir } from './deploy.mjs'
 
 /** 本插件在 profile 里的包名，也是要在 hmr 里监听的目录名。 */
-const PKG_NAME = 'dsh-codearts'
+const PKG_NAME = 'dsh-codearts-connect'
 /** hmr 条目的 id 与 name（name 与 base 组合包保持一致）。 */
 const HMR_ID = 'hmr'
 const HMR_NAME = '@deepseek-ai/dsh-hmr'
@@ -44,7 +44,7 @@ const HMR_NAME = '@deepseek-ai/dsh-hmr'
  * 按顶层 `- ` 切分时，行前面的注释会被算进上一个条目，于是重复 on 会重复一遍注释、
  * off 又会把注释孤儿化留在文件里。
  */
-const MARKER = '# dsh-codearts dev'
+const MARKER = '# dsh-codearts-connect dev'
 
 /**
  * 要写进 profile patch 的覆盖行。

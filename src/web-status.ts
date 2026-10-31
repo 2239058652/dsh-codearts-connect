@@ -6,7 +6,7 @@
  * or remove accounts, and to claim the daily check-in credits. The route
  * answers loopback browser requests only and never returns token material.
  *
- * @module dsh-codearts/web-status
+ * @module dsh-codearts-connect/web-status
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -48,6 +48,8 @@ export const CODEARTS_LOGIN_PATH = '/api/codearts/login'
 export const CODEARTS_LOGIN_STATUS_PATH = '/api/codearts/login/status'
 /** 删除某个账号：DELETE /api/codearts/accounts?id=<accountId> */
 export const CODEARTS_ACCOUNTS_PATH = '/api/codearts/accounts'
+/** POST /api/codearts/account-preference { id } — 手动指定优先账号（空串/ null = 自动轮转）。 */
+export const CODEARTS_ACCOUNT_PREFERENCE_PATH = '/api/codearts/account-preference'
 /** POST /api/codearts/claim — 领一次福利中心的每日签到积分（幂等由上游按天去重）。 */
 export const CODEARTS_CLAIM_PATH = '/api/codearts/claim'
 /** POST /api/codearts/refresh-models — 立刻重拉一次模型目录，并清掉「福利今日不可用」标记。 */
@@ -211,6 +213,11 @@ export interface CodeArtsWebStatus {
   models: readonly CodeArtsWebModelBadge[]
   /** 已存账号。多个账号时会自动轮转，某个号忙就换下一个。 */
   accounts: readonly CodeArtsAccountSummary[]
+  /**
+   * 手动指定优先使用的账号 id（空/省略 = 自动轮转）。
+   * 只是首选：该号不可用时仍会换号。
+   */
+  preferredAccountId?: string
   /** 本机经插件发出的请求统计（账号总额度见 credits 字段，这里只记本机）。 */
   usage: CodeArtsWebUsage
   /**
@@ -331,6 +338,13 @@ export interface CodeArtsStatusRouteOptions {
   dock?: () => CodeArtsDockFlags
   /** 写入显隐开关。返回 false 表示没接 settings provider，卡片据此把勾选框置灰。 */
   setDock?: (patch: Partial<CodeArtsDockFlags>) => Promise<boolean>
+  /**
+   * 手动指定的优先账号 id（空 = 自动轮转）。省略则 /status 不带该字段，
+   * 卡片按自动轮转渲染。
+   */
+  preferredAccount?: () => string | undefined
+  /** 写入优先账号；空串 = 恢复自动轮转。返回 false 表示没有 settings provider。 */
+  setPreferredAccount?: (id: string) => Promise<boolean>
   /**
    * 丢掉积分缓存后重拉一次（弹层上那个「刷新积分」按钮）。
    * 省略时 `?force=1` 退回普通缓存读取 —— 顶多是不新鲜，不该报错。
@@ -485,13 +499,16 @@ async function buildStatus(deps: CodeArtsStatusRouteOptions, force = false): Pro
   const cred = await deps.store.current()
   const usage = usageOf(deps)
   const dock = deps.dock === undefined ? {} : { dock: deps.dock() }
+  const preference = deps.preferredAccount === undefined
+    ? {}
+    : { preferredAccountId: deps.preferredAccount() ?? '' }
   // pi-ai 版本不兼容时模型全不可用，但状态接口本身还能用 —— 原因必须在这里给出去，
   // 否则用户只看到每条消息一句「本轮运行失败」。
   const piAi = await probePiAiCompat()
   const compat = piAi === undefined ? {} : { piAiError: piAi }
 
   if (accounts.length === 0 || cred === undefined) {
-    return { status: 'signed-out', models, accounts, usage, ...dock, ...compat }
+    return { status: 'signed-out', models, accounts, usage, ...dock, ...preference, ...compat }
   }
   // 只要还有**任意一个**账号能用就算登录中 —— 别的号过期了不影响轮转。
   const usable = accounts.some(accountUsable)
@@ -502,6 +519,7 @@ async function buildStatus(deps: CodeArtsStatusRouteOptions, force = false): Pro
     accounts,
     usage,
     ...dock,
+    ...preference,
   }
   // 没有可用账号时不问积分：凭证都过期了，问了也是白跑一趟（还得等超时）。
   if (!usable) return { status: 'expired', ...identity, ...compat }
@@ -698,6 +716,8 @@ function tokenDeleteHandler(deps: CodeArtsStatusRouteOptions) {
     }
     try {
       await deps.store.clear()
+      // 全清之后原先指定的账号也不存在了；不清设置会留下悬空 id。
+      if (deps.preferredAccount?.() !== undefined) await deps.setPreferredAccount?.('')
       json(res, 200, await buildStatus(deps))
     } catch (error: unknown) {
       json(res, 500, { error: safeMessage(error) })
@@ -729,7 +749,66 @@ function accountsHandler(deps: CodeArtsStatusRouteOptions) {
     }
     try {
       await deps.store.remove(id)
+      // 删掉的恰好是手动指定的号：不清掉的话设置里会留一个不存在的 id。
+      if (deps.preferredAccount?.() === id) await deps.setPreferredAccount?.('')
       json(res, 200, await buildStatus(deps))
+    } catch (error: unknown) {
+      json(res, 500, { error: safeMessage(error) })
+    }
+  }
+}
+
+/**
+ * POST /api/codearts/account-preference { id } — 手动指定优先账号。
+ *
+ * `id` 为空串或 null 表示恢复自动轮转。只接受已存账号的 id：写一个不存在的
+ * 账号只会让状态接口回一个永远匹配不上的首选，用户看不出哪里错了。
+ */
+function accountPreferenceHandler(deps: CodeArtsStatusRouteOptions) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (req.method !== 'POST') {
+      json(res, 405, { error: 'method not allowed' })
+      return
+    }
+    if (!loopbackRequest(req)) {
+      json(res, 403, { error: 'request-not-trusted' })
+      return
+    }
+    if (deps.setPreferredAccount === undefined) {
+      json(res, 403, { error: 'account-preference-not-writable' })
+      return
+    }
+    const setPreferred = deps.setPreferredAccount
+    const type = req.headers['content-type']
+    if (typeof type !== 'string' || !type.trim().toLowerCase().startsWith('application/json')) {
+      json(res, 415, { error: 'content-type must be application/json' })
+      return
+    }
+    try {
+      const parsed = JSON.parse(await readBody(req)) as unknown
+      if (parsed === null || typeof parsed !== 'object') {
+        json(res, 400, { error: 'expected {"id": string | null}' })
+        return
+      }
+      const body = parsed as { id?: unknown }
+      if (body.id !== undefined && body.id !== null && typeof body.id !== 'string') {
+        json(res, 400, { error: 'expected {"id": string | null}' })
+        return
+      }
+      const id = typeof body.id === 'string' ? body.id.trim() : ''
+      if (id !== '') {
+        const ids = await deps.store.ids()
+        if (!ids.includes(id)) {
+          json(res, 400, { error: 'unknown account' })
+          return
+        }
+      }
+      const ok = await setPreferred(id)
+      if (!ok) {
+        json(res, 403, { error: 'account-preference-not-writable' })
+        return
+      }
+      json(res, 200, { preferredAccountId: id })
     } catch (error: unknown) {
       json(res, 500, { error: safeMessage(error) })
     }
@@ -887,6 +966,11 @@ export function registerCodeArtsStatusRoute(ctx: Context, deps: CodeArtsStatusRo
       path: CODEARTS_ACCOUNTS_PATH,
       handler: accountsHandler(deps),
     })
+    const disposeAccountPreference = ctx.webServer.register({
+      kind: 'exact',
+      path: CODEARTS_ACCOUNT_PREFERENCE_PATH,
+      handler: accountPreferenceHandler(deps),
+    })
     const disposeClaim = ctx.webServer.register({
       kind: 'exact',
       path: CODEARTS_CLAIM_PATH,
@@ -920,6 +1004,7 @@ export function registerCodeArtsStatusRoute(ctx: Context, deps: CodeArtsStatusRo
       disposeLoginStart()
       disposeLoginStatus()
       disposeAccounts()
+      disposeAccountPreference()
       disposeClaim()
       disposeRefresh()
       disposeQueue()
@@ -928,7 +1013,7 @@ export function registerCodeArtsStatusRoute(ctx: Context, deps: CodeArtsStatusRo
       for (const s of activeLogins.values()) s.close()
       activeLogins.clear()
     }
-  }, 'dsh-codearts: Web status route')
+  }, 'dsh-codearts-connect: Web status route')
 }
 
 /** /api/codearts/token — 一个席位按方法分派（POST 写入，DELETE 清除）。 */

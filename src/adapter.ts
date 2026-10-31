@@ -12,7 +12,7 @@
  *   - reasoning levels are surfaced only where upstream's thinking-variants names
  *     them (`GLM-5.2` → high/max); everything else stays a plain chat model
  *
- * @module dsh-codearts/adapter
+ * @module dsh-codearts-connect/adapter
  */
 
 import { createProvider } from '@earendil-works/pi-ai'
@@ -58,7 +58,7 @@ const INERT_AUTH = {
       return []
     },
     async modify() {
-      throw new Error('dsh-codearts: the codearts route has no pi-ai credential lifecycle')
+      throw new Error('dsh-codearts-connect: the codearts route has no pi-ai credential lifecycle')
     },
     async delete() {},
   },
@@ -157,7 +157,7 @@ export function createCodeArtsAdapter(options: CodeArtsAdapterOptions): CodeArts
     provider: CODEARTS_PROVIDER,
     displayName: 'CodeArts',
     streamIdleTimeoutMs: CODEARTS_STREAM_IDLE_TIMEOUT_MS,
-    retryPolicy: resolveRetryPolicy(undefined, 'dsh-codearts retryPolicy'),
+    retryPolicy: resolveRetryPolicy(undefined, 'dsh-codearts-connect retryPolicy'),
     configuredMaxTokens: new Map(),
     modelErrors: new Map<string, string>(),
     ...REQUEST_IMAGE_BUDGETS,

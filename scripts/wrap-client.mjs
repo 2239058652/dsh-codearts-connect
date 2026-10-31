@@ -3,7 +3,7 @@
  * 把 tsdown 产出的 CJS client bundle 包进 DSH 期望的自注册形态：
  *
  *   window.__ModuleLoader__.load({
- *     id: "dsh-codearts",                 // 必须逐字等于包名
+ *     id: "dsh-codearts-connect",                 // 必须逐字等于包名
  *     factory(require) {                  // require 由 __ModuleLoader__ 注入，解析 react / @deepseek-ai/*
  *       var module = { exports: {} };
  *       var exports = module.exports;
@@ -21,7 +21,7 @@ import { join, dirname } from 'node:path'
 const SRC = dirname(dirname(new URL(import.meta.url).pathname)).replace(/^\/([A-Za-z]):/, '$1:')
 const cjsPath = join(SRC, 'lib', 'client', 'index.cjs')
 const outPath = join(SRC, 'lib', 'client', 'index.js')
-const id = 'dsh-codearts'
+const id = 'dsh-codearts-connect'
 
 if (!existsSync(cjsPath)) {
   console.error('wrap-client: 找不到', cjsPath, '——请先 build')

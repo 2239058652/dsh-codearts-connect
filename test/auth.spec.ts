@@ -50,7 +50,7 @@ function oauthToken(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-test-'))
+  dir = await mkdtemp(join(tmpdir(), 'dsh-codearts-connect-test-'))
   authPath = join(dir, '.codearts-auth.json')
   refreshTokenMock.mockReset()
 })

@@ -131,7 +131,11 @@ function stubUpstream(options: { capTimes?: number; tpmTimes?: number } = {}): v
   }))
 }
 
-async function start(accountIds: string[], options: { capTimes?: number; tpmTimes?: number } = {}): Promise<void> {
+async function start(
+  accountIds: string[],
+  options: { capTimes?: number; tpmTimes?: number } = {},
+  preferred?: string,
+): Promise<void> {
   ids = accountIds
   seenTokens = []
   stubUpstream(options)
@@ -143,6 +147,7 @@ async function start(accountIds: string[], options: { capTimes?: number; tpmTime
     } as never,
     catalog: { current: () => [] } as never,
     pool,
+    ...(preferred === undefined ? {} : { preferredAccount: () => preferred }),
   })
   await shim.ready
   port = Number(new URL(shim.baseUrl()).port)
@@ -159,6 +164,26 @@ afterEach(async () => {
 })
 
 describe('cross-account failover', () => {
+  it('uses the manually preferred account first', async () => {
+    await start(['A', 'B'], {}, 'B')
+    const res = await post(port, bearer)
+
+    expect(res.status).toBe(200)
+    expect(seenTokens[0]).toBe(TOKEN_B)
+  })
+
+  it('falls back when the preferred account cannot take the request', async () => {
+    // A 正常、B 被禁用；指定 B 时必须直接落到 A，而不是卡在 B 上。
+    await start(['A', 'B'], { capTimes: 0 }, 'B')
+    // 先让池认识这两个号，再把 B 标成不可用（真实场景是凭据失效/冷却）。
+    pool.sync(['A', 'B'])
+    pool.disable('B', 'test')
+    const res = await post(port, bearer)
+
+    expect(res.status).toBe(200)
+    expect(seenTokens).toEqual([TOKEN_A])
+  })
+
   it('hands a capped request to the next account instead of waiting', async () => {
     await start(['A', 'B'])
     const res = await post(port, bearer)

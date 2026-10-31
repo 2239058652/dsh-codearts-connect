@@ -22,7 +22,7 @@ Brings Huawei Cloud CodeArts into DeepSeek Harness (DSH), so the models CodeArts
 - **Model discovery**: the plugin fetches the account’s real model list on startup and
   hourly (built-in, limited-time benefit and agent-center sources merged) and falls back to
   the built-in seed list when that fails.
-- **Local usage**: the card and `dsh-codearts usage` show today’s and lifetime request and
+- **Local usage**: the card and `dsh-codearts-connect usage` show today’s and lifetime request and
   token counts (per model, per account), plus each account’s **session-slot occupancy** —
   which is exactly why a turn had to wait. CodeArts exposes no quota API, so these are the
   requests this machine sent through the plugin; the card links to the official usage page.
@@ -36,7 +36,7 @@ Brings Huawei Cloud CodeArts into DeepSeek Harness (DSH), so the models CodeArts
 
 See [INSTALL.en.md](./INSTALL.en.md) for the full walkthrough. In short: put
 `package.json` + `lib/` + `cordis.patch.yml` into
-`profiles/<profile>/node_modules/dsh-codearts/` and register the package in the profile’s
+`profiles/<profile>/node_modules/dsh-codearts-connect/` and register the package in the profile’s
 `package.json`, `node_modules/.package-map.json` and `node_modules/.modules.yaml`.
 
 ```sh
@@ -59,12 +59,12 @@ browser by `dsh-client-hmr`.
 ## CLI
 
 ```sh
-dsh plugin --profile <profile> exec dsh-codearts status [--json]   # sign-in state + seed model list
-dsh plugin --profile <profile> exec dsh-codearts models [--json]   # discover the account's real models
-dsh plugin --profile <profile> exec dsh-codearts usage [--json]    # local usage ledger (not account quota)
-dsh plugin --profile <profile> exec dsh-codearts identity [--fix]  # stable account ids; merge duplicates
-dsh plugin --profile <profile> exec dsh-codearts doctor            # secret-free diagnostics
-dsh plugin --profile <profile> exec dsh-codearts logout            # drop the credential this plugin stored
+dsh plugin --profile <profile> exec dsh-codearts-connect status [--json]   # sign-in state + seed model list
+dsh plugin --profile <profile> exec dsh-codearts-connect models [--json]   # discover the account's real models
+dsh plugin --profile <profile> exec dsh-codearts-connect usage [--json]    # local usage ledger (not account quota)
+dsh plugin --profile <profile> exec dsh-codearts-connect identity [--fix]  # stable account ids; merge duplicates
+dsh plugin --profile <profile> exec dsh-codearts-connect doctor            # secret-free diagnostics
+dsh plugin --profile <profile> exec dsh-codearts-connect logout            # drop the credential this plugin stored
 ```
 
 `models` is the first thing to run when a model is missing from the picker: it prints what
@@ -91,7 +91,7 @@ The structure follows `dsh-codebuddy-cli`: a local loopback shim plus a pi-ai ad
 DSH chat window
    │  OpenAI /chat/completions, Bearer=<per-process random secret>
    ▼
-dsh-codearts shim  (127.0.0.1:random port)
+dsh-codearts-connect shim  (127.0.0.1:random port)
    │  injects x-auth-token: <Huawei Cloud STS security_token>
    │  + Huawei Cloud AK/SK SDK-HMAC-SHA256 signature
    ▼
@@ -119,7 +119,7 @@ other local processes cannot impersonate it.
   re-login of the same account updates the existing entry instead of creating a new one.
   When that probe fails (network, API change) the old behaviour returns — accounts keyed by
   their DPoP public key, where a re-login looks like a new account and the old entry goes
-  stale on its own. Legacy duplicates can be merged with `dsh-codearts identity --fix`
+  stale on its own. Legacy duplicates can be merged with `dsh-codearts-connect identity --fix`
   (running it without `--fix` is read-only).
 - Advertised parameters are not always usable: the benefit gateway advertises `max_tokens`
   393216, while the chat endpoint rejects anything above 65536 with
@@ -135,7 +135,7 @@ other local processes cannot impersonate it.
 
 ## Changelog
 
-See [CHANGELOG.md](https://github.com/elegant01/dsh-codearts/blob/main/CHANGELOG.md) for the changes in each release.
+See [CHANGELOG.md](https://github.com/2239058652/dsh-codearts-connect/blob/main/CHANGELOG.md) for the changes in each release.
 
 ## Disclaimer
 
@@ -153,6 +153,8 @@ See [CHANGELOG.md](https://github.com/elegant01/dsh-codearts/blob/main/CHANGELOG
 
 ## Acknowledgements
 
+- [dsh-codearts](https://github.com/elegant01/dsh-codearts) (MIT) — the upstream project;
+  `dsh-codearts-connect` is a derivative work based on it.
 - [dsh-codebuddy-cli](https://github.com/fu827707013/dsh-codebuddy-cli) (MIT) — this
   plugin’s DSH plugin structure, loopback shim and provider registration follow it.
 

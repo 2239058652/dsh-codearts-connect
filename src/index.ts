@@ -18,7 +18,7 @@
  * models it names, e.g. GLM-5.2 → high/max). While a request waits for its
  * stream, the shim also polls the upstream queue position for the dock.
  *
- * @module dsh-codearts
+ * @module dsh-codearts-connect
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -104,6 +104,12 @@ export interface Config {
   showCreditDock?: boolean
   /** 等上游开流时那行「排队第 N 位」是否显示。缺省 = 显示。 */
   showQueueDock?: boolean
+  /**
+   * 手动指定优先使用的账号 id。空/未设置 = 自动轮转。
+   *
+   * 只是「首选」：指定账号不可用时仍会换号，避免一条消息因为号忙而直接失败。
+   */
+  preferredAccountId?: string
 }
 
 interface VolatileValue<T> {
@@ -128,6 +134,7 @@ export const Config: z<Config> = z.object({
   enabledModels: z.array(z.string()).description('Model ids offered in the model pickers (empty means every model)').volatile(),
   showCreditDock: z.boolean().default(true).description('Show the remaining-credits line under the chat input box').volatile(),
   showQueueDock: z.boolean().default(true).description('Show the upstream queue position under the chat input box').volatile(),
+  preferredAccountId: z.string().default('').description('Account id to prefer for new requests (empty means automatic rotation)').volatile(),
 }) as unknown as z<Config>
 
 function settingsCompatNamespace(ctx: Context): SettingsNamespace {
@@ -211,6 +218,18 @@ export function apply(ctx: Context, rawConfig: Config): void {
     return true
   }
 
+  /** 手动指定的账号 id；空串/未设置 = 自动轮转。 */
+  const preferredAccount = (): string | undefined => {
+    const id = current().preferredAccountId?.trim() ?? ''
+    return id === '' ? undefined : id
+  }
+  const setPreferredAccount = async (id: string): Promise<boolean> => {
+    const settings = ctx.get('settings')
+    if (settings === undefined) return false
+    await settings.update(settingsCompatNamespace(ctx), { preferredAccountId: id })
+    return true
+  }
+
   // Same-origin status/token routes backing the Plugin-configuration card.
   // 卡片另外读账号池的槽位占用与用量账本：这两个都是本机事实，不涉及令牌。
   /** 手动「刷新模型列表」的预算：三路来源各打一次，比每小时的后台刷新更该给足时间。 */
@@ -234,6 +253,8 @@ export function apply(ctx: Context, rawConfig: Config): void {
     },
     dock,
     setDock,
+    preferredAccount,
+    setPreferredAccount,
     claim: async (accountId?: string) => {
       const ids = accountId === undefined ? await store.ids() : [accountId]
       if (ids.length === 0) {
@@ -335,16 +356,16 @@ export function apply(ctx: Context, rawConfig: Config): void {
       if (outcome.anySucceeded) {
         const free = outcome.models.filter(model => model.benefit === true).length
         ctx.logger.debug(
-          `dsh-codearts: model discovery refreshed the catalog (${outcome.models.length} models, ${free} benefit)`,
+          `dsh-codearts-connect: model discovery refreshed the catalog (${outcome.models.length} models, ${free} benefit)`,
         )
       } else {
         ctx.logger.warn(
-          'dsh-codearts: model discovery found nothing usable; keeping the current catalog',
+          'dsh-codearts-connect: model discovery found nothing usable; keeping the current catalog',
           outcome.accounts.flatMap(account => account.errors),
         )
       }
     } catch (error) {
-      ctx.logger.debug('dsh-codearts: model discovery failed; keeping the current catalog', error)
+      ctx.logger.debug('dsh-codearts-connect: model discovery failed; keeping the current catalog', error)
     }
   }
 
@@ -363,7 +384,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
   })
 
   // Build the loopback shim first; the adapter reads its origin at construction.
-  const shim = createCodeArtsShim({ store, catalog, pool, usage, queue, logger: ctx.logger })
+  const shim = createCodeArtsShim({ store, catalog, pool, usage, queue, preferredAccount, logger: ctx.logger })
 
   // 账本懒加载：读盘失败/文件不存在都不影响插件启动。
   void usage.load().catch(() => {})
@@ -375,7 +396,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
       void discoverLoop()
       // 版本不兼容时每条消息都会死在出网之前，所以要在这里说明白（卡片上也显示）。
       const incompatible = await probePiAiCompat()
-      if (incompatible !== undefined) ctx.logger.error(`dsh-codearts: ${incompatible}`)
+      if (incompatible !== undefined) ctx.logger.error(`dsh-codearts-connect: ${incompatible}`)
       const codearts = createCodeArtsAdapter({
         shim,
         catalog,
@@ -411,6 +432,6 @@ export function apply(ctx: Context, rawConfig: Config): void {
       }
     })
     .catch((error: unknown) => {
-      ctx.logger.error('dsh-codearts: loopback shim failed to start; provider not registered', error)
+      ctx.logger.error('dsh-codearts-connect: loopback shim failed to start; provider not registered', error)
     })
 }

@@ -28,28 +28,28 @@ pnpm run hmr:off       # 关掉，回到 base 默认（只监听 profile 配置�
   disabled: false
   config:
     root:
-      - node_modules/dsh-codearts
+      - node_modules/dsh-codearts-connect
     ignored: []
 ```
 
 两个字段都不能省，原因都在 DSH 的实现里：
 
 - `root` 默认是空表（`dsh-base` 的 patch 里写作 `root: []`），意思是**只监听 profile 配置文件、不监听模块**，所以改代码必须重启。
-- `ignored` 的默认值里有一条排除 `node_modules` 的 glob，而插件恰好装在 `node_modules/dsh-codearts`，正好被默认值排除；而且它是按「相对 base 目录」做 picomatch 匹配的，所以覆盖行里必须显式写成空表。
+- `ignored` 的默认值里有一条排除 `node_modules` 的 glob，而插件恰好装在 `node_modules/dsh-codearts-connect`，正好被默认值排除；而且它是按「相对 base 目录」做 picomatch 匹配的，所以覆盖行里必须显式写成空表。
 - patch 是**整份 `config` 替换**而不是字段合并，所以 `root` 和 `ignored` 要一起给全。
 
 改完这个 patch 通常不用重启：profile 的 patch 文件本身也在 HMR 的监听范围内（profile 里 `patchReload: live`），条目会重新加载。若发现没生效，重启一次 DSH 即可，之后就一直有效。
 
 > ⚠️ **开了模块监听就别用插件管理器/npm 升级本插件。** 宿主为热重载监视着
-> `node_modules/dsh-codearts`，目录被占用后 pnpm 替换版本时会失败：
+> `node_modules/dsh-codearts-connect`，目录被占用后 pnpm 替换版本时会失败：
 >
 > ```
-> [ERR_PNPM_EPERM] [importPackage ...\node_modules\dsh-codearts]
+> [ERR_PNPM_EPERM] [importPackage ...\node_modules\dsh-codearts-connect]
 > EPERM: operation not permitted, rename
->   '...\dsh-codearts_tmp_20976_1' -> '...\dsh-codearts'
+>   '...\dsh-codearts-connect_tmp_20976_1' -> '...\dsh-codearts-connect'
 > ```
 >
-> 更麻烦的是失败后**插件管理器会回滚**：把 `dsh-codearts` 从 profile 的
+> 更麻烦的是失败后**插件管理器会回滚**：把 `dsh-codearts-connect` 从 profile 的
 > `dependencies` 和 `bundles` 里一起删掉，表现为「插件列表里它没了」。升级前的正确顺序是
 > `pnpm run hmr:off` → 升级 → （要接着开发再）`pnpm run hmr:on`。
 >
@@ -67,7 +67,7 @@ pnpm run hmr:off       # 关掉，回到 base 默认（只监听 profile 配置�
 >         root: []
 > ```
 >
-> 即 `root` 默认空表 —— 没人去开它，就没有句柄占用 `node_modules/dsh-codearts`。
+> 即 `root` 默认空表 —— 没人去开它，就没有句柄占用 `node_modules/dsh-codearts-connect`。
 
 ## 日常循环
 

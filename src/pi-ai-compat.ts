@@ -15,7 +15,7 @@
  *
  * 探测用能力而不是版本号：不依赖 package.json 能不能读到，也对未来的版本漂移免疫。
  *
- * @module dsh-codearts/pi-ai-compat
+ * @module dsh-codearts-connect/pi-ai-compat
  */
 
 /** 折叠后的系统消息要能被估token；从这一版起才支持。 */
@@ -36,7 +36,7 @@ export function resetPiAiCompatProbe(): void {
 
 async function runProbe(): Promise<string | undefined> {
   const hint = `需要 @earendil-works/pi-ai >= ${MIN_PI_AI_VERSION} 的行为；1.1.4 起它已打进插件产物，`
-    + '探测失败说明产物损坏或被改动，请重装 dsh-codearts'
+    + '探测失败说明产物损坏或被改动，请重装 dsh-codearts-connect'
   let estimate: ((message: never) => number) | undefined
   try {
     ;({ estimateMessageTokens: estimate } = await import('@earendil-works/pi-ai/utils/estimate'))

@@ -25,6 +25,11 @@ export interface CodeArtsSettingsKey {
   addAccount: string
   pasteTokenAdd: string
   accountsRotateHint: string
+  accountUse: string
+  accountInUse: string
+  accountPinnedHint: string
+  accountAuto: string
+  accountPreferenceFailed: string
   accountNeedsSignIn: string
   accountNoKey: string
   accountStored: string
@@ -50,6 +55,13 @@ export interface CodeArtsSettingsKey {
   signIn: string
   signingIn: string
   openManually: string
+  addAccountDialogTitle: string
+  addAccountDialogHint: string
+  addAccountDialogCopy: string
+  addAccountDialogCopied: string
+  addAccountDialogCopyFailed: string
+  addAccountDialogWaiting: string
+  addAccountDialogClose: string
   manualToken: string
   loginFailed: string
   modelsLoading: string
@@ -142,7 +154,12 @@ export const zh: CodeArtsSettingsKey = {
   accountRemove: '删除',
   addAccount: '添加账号',
   pasteTokenAdd: '粘贴 Token 添加',
-  accountsRotateHint: '已存多个账号：请求会自动轮转，某个账号忙时改用下一个，不用干等。',
+  accountsRotateHint: '已存多个账号：请求会自动轮转，某个账号忙时改用下一个；点「使用此账号」可优先用指定的号。',
+  accountUse: '使用此账号',
+  accountInUse: '当前使用',
+  accountPinnedHint: '已指定优先使用 {name}；它忙或不可用时会临时换到其它号。',
+  accountAuto: '恢复自动轮转',
+  accountPreferenceFailed: '设置账号失败：{message}',
   accountNeedsSignIn: '需重新登录',
   accountNoKey: '无 AK/SK',
   accountStored: '获取于 {time}',
@@ -167,7 +184,14 @@ export const zh: CodeArtsSettingsKey = {
   saved: '已保存',
   signIn: '使用华为云账号登录',
   signingIn: '登录中…（请在浏览器完成授权）',
-  openManually: '若未自动打开，请手动访问：',
+  openManually: '授权链接（5 分钟内有效）：',
+  addAccountDialogTitle: '添加账号',
+  addAccountDialogHint: '如果当前浏览器已经登录了某个华为云账号，直接打开这个链接会授权成同一个账号，加不出新号。请复制下面的链接，在无痕窗口、另一个浏览器或另一个浏览器用户配置里打开，再登录要添加的账号。',
+  addAccountDialogCopy: '复制链接',
+  addAccountDialogCopied: '已复制',
+  addAccountDialogCopyFailed: '复制失败，请手动选中链接复制',
+  addAccountDialogWaiting: '授权完成后这个框会自动关闭；关掉也不影响登录，链接仍留在卡片上。',
+  addAccountDialogClose: '关闭',
   manualToken: '手动粘贴 token（降级）',
   loginFailed: '登录失败，请重试',
   modelsLoading: '模型勾选区加载中…（若长期不出现，请确认已登录且 DSH 已完全重启）',
@@ -259,7 +283,12 @@ export const en: CodeArtsSettingsKey = {
   accountRemove: 'Remove',
   addAccount: 'Add account',
   pasteTokenAdd: 'Paste a token',
-  accountsRotateHint: 'Multiple accounts stored: requests rotate automatically, so a busy account hands over to the next one instead of making you wait.',
+  accountsRotateHint: 'Multiple accounts stored: requests rotate automatically, so a busy account hands over to the next one. Click “Use this account” to prefer a specific one.',
+  accountUse: 'Use this account',
+  accountInUse: 'In use',
+  accountPinnedHint: 'Preferring {name}; if it is busy or unavailable, another account is used temporarily.',
+  accountAuto: 'Back to automatic rotation',
+  accountPreferenceFailed: 'Could not set the account: {message}',
   accountNeedsSignIn: 'Needs sign-in',
   accountNoKey: 'No AK/SK',
   accountStored: 'stored {time}',
@@ -284,7 +313,14 @@ export const en: CodeArtsSettingsKey = {
   saved: 'Saved',
   signIn: 'Sign in with Huawei Cloud',
   signingIn: 'Signing in… (finish authorization in your browser)',
-  openManually: 'If it did not open automatically, visit:',
+  openManually: 'Authorization link (valid for 5 minutes):',
+  addAccountDialogTitle: 'Add account',
+  addAccountDialogHint: 'If this browser is already signed in to Huawei Cloud, opening this link directly just authorizes the same account and no new account is added. Copy the link below and open it in a private window, another browser, or another browser profile, then sign in to the account you want to add.',
+  addAccountDialogCopy: 'Copy link',
+  addAccountDialogCopied: 'Copied',
+  addAccountDialogCopyFailed: 'Copy failed — select and copy the link manually',
+  addAccountDialogWaiting: 'This dialog closes itself once authorization finishes. Closing it does not cancel the sign-in; the link stays on the card.',
+  addAccountDialogClose: 'Close',
   manualToken: 'Paste token manually (fallback)',
   loginFailed: 'Sign-in failed, please retry',
   modelsLoading: 'Loading model selection… (if it never appears, make sure you are signed in and DSH was fully restarted)',

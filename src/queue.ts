@@ -18,7 +18,7 @@
  *
  * 三种收尾都会 DELETE 清号，别把幽灵排队留在上游把队列越撑越长。
  *
- * @module dsh-codearts/queue
+ * @module dsh-codearts-connect/queue
  */
 
 import {

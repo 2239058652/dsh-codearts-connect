@@ -5,7 +5,7 @@
  * 在 CodeArts 桌面端实测：聊天请求必须用 AK/SK 签名，光传 x-auth-token 会被
  * APIG 拒（APIG.0301 decrypt token fail）。
  *
- * @module dsh-codearts/signer
+ * @module dsh-codearts-connect/signer
  */
 
 import { createHash, createHmac } from 'node:crypto'

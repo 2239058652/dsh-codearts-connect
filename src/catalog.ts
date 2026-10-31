@@ -14,7 +14,7 @@
  * 这条渠道 2026-10-21 起整体不可用，于是福利模型当天就从目录里消失 —— 那是事实，
  * 不是故障，硬撑只会把能正常用的积分模型推到一条不存在的渠道上。
  *
- * @module dsh-codearts/catalog
+ * @module dsh-codearts-connect/catalog
  */
 
 /** One model the adapter exposes to DSH. */

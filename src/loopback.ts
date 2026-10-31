@@ -7,7 +7,7 @@
  * DNS-rebinding page can reach 127.0.0.1), so both surfaces also check the
  * Host and Origin headers.
  *
- * @module dsh-codearts/loopback
+ * @module dsh-codearts-connect/loopback
  */
 
 /**

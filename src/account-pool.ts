@@ -9,7 +9,7 @@
  * 结构参照 codearts2api（Go）的 `internal/pool`，但只取本项目用得到的那部分：
  * 每账号的槽位计数、健康/冷却状态、以及选号。保活心跳、签到、积分一律不搬。
  *
- * @module dsh-codearts/account-pool
+ * @module dsh-codearts-connect/account-pool
  */
 
 /** 单账号默认并发上限。上游给 3 个会话，留 1 个给 CodeArts 网页端。 */
@@ -107,12 +107,21 @@ export class CodeArtsAccountPool {
   /**
    * 选一个账号。
    *
-   * 优先挑没人撞上限的（`cappedUntil` 已过的）；如果全都撞了，就退回其中任意
-   * 一个 —— 排它的队总比直接失败强。都没得选（全禁用/全在冷却）时返回 undefined。
+   * 给了 `preferred` 且它现在能接活，就直接选它 —— 这是设置卡片里「使用此账号」
+   * 的手动指定。指定账号不健康、在冷却或本地槽位已满时不硬塞，退回正常的
+   * 「最久未用」轮转：指定的意义是不再盲目换号，不是让请求直接失败。
+   *
+   * 没给指定时，优先挑没人撞上限的（`cappedUntil` 已过的）；如果全都撞了，就退回
+   * 其中任意一个 —— 排它的队总比直接失败强。都没得选（全禁用/全在冷却）时返回
+   * undefined。
    */
-  pick(exclude: ReadonlySet<string> = new Set()): string | undefined {
+  pick(exclude: ReadonlySet<string> = new Set(), preferred?: string): string | undefined {
     const candidates = this.available(exclude)
     if (candidates.length === 0) return undefined
+    if (preferred !== undefined) {
+      const wanted = candidates.find(a => a.id === preferred)
+      if (wanted !== undefined) return wanted.id
+    }
     const now = this.now()
     const notCapped = candidates.filter(a => now >= a.cappedUntil)
     return (notCapped.length > 0 ? notCapped[0] : candidates[0]).id

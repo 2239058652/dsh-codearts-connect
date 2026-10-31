@@ -3,4 +3,4 @@
 # (PKCE + DPoP) or a pasted token; no separate CLI is required.
 - insert:
     - id: llm-codearts
-      name: dsh-codearts
+      name: dsh-codearts-connect

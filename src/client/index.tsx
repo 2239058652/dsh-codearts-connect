@@ -31,18 +31,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-export const name = 'dsh-codearts-client'
+export const name = 'dsh-codearts-connect-client'
 export const inject = ['slots', 'locale']
 
 export function apply(ctx: ClientContext): void {
   try {
     const namespace = 'settings.codearts'
-    ctx.effect(() => ctx.locale.register(namespace, { zh, en }), 'dsh-codearts: settings copy')
+    ctx.effect(() => ctx.locale.register(namespace, { zh, en }), 'dsh-codearts-connect: settings copy')
     const t = ctx.locale.bind(namespace) as CodeArtsPluginCardInjected['t']
 
     ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
       name: 'plugins.bundle.config',
-      key: 'dsh-codearts',
+      key: 'dsh-codearts-connect',
       locale: namespace,
     }, () => <CodeArtsPluginCard t={t} />))
 
@@ -56,6 +56,6 @@ export function apply(ctx: ClientContext): void {
       inject: () => ({ t }),
     }, CodeArtsCreditDock))
   } catch (error: unknown) {
-    console.error('[dsh-codearts] client card failed to load (host provider unaffected):', error)
+    console.error('[dsh-codearts-connect] client card failed to load (host provider unaffected):', error)
   }
 }

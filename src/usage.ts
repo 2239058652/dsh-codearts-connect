@@ -13,7 +13,7 @@
  *
  * 落盘在 `$DSH_HOME/.codearts-usage.json`，按天存，保留最近 `RETENTION_DAYS` 天。
  *
- * @module dsh-codearts/usage
+ * @module dsh-codearts-connect/usage
  */
 
 import { existsSync } from 'node:fs'

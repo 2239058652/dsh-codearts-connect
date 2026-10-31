@@ -8,7 +8,7 @@
  * 失败一律不抛出：拉不到就继续用现有目录（冷启动时是种子清单），把失败原因
  * 带回去给 CLI / 日志展示。真正「不可用」的信号是 0 个账号。
  *
- * @module dsh-codearts/discovery
+ * @module dsh-codearts-connect/discovery
  */
 
 import {

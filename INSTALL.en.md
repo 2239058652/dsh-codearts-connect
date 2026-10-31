@@ -1,4 +1,4 @@
-# dsh-codearts install & verification guide
+# dsh-codearts-connect install & verification guide
 
 English | [中文](./INSTALL.md)
 
@@ -8,9 +8,9 @@ The plugin that brings Huawei Cloud CodeArts into DeepSeek Harness Desktop (DSH)
 
 Copying and registering the plugin takes three steps:
 
-- put the package into `<home>/.dsh/profiles/desktop/node_modules/dsh-codearts/`
+- put the package into `<home>/.dsh/profiles/desktop/node_modules/dsh-codearts-connect/`
   (containing `lib/`, `cordis.patch.yml`, `package.json`, `README.md`, `LICENSE`)
-- declare `dsh-codearts` under `dependencies` in `profiles/desktop/package.json`
+- declare `dsh-codearts-connect` under `dependencies` in `profiles/desktop/package.json`
 - register it in `node_modules/.package-map.json` and `node_modules/.modules.yaml`
 
 `scripts/deploy.mjs` does all three (and only writes the profile manifests when something
@@ -31,7 +31,7 @@ node scripts/deploy.mjs [profileDir]     # defaults to <home>/.dsh/profiles/desk
 
 1. **Fully quit** DeepSeek Harness (quit from the tray; make sure the process is gone).
 2. Start DSH again.
-3. Open **Settings → Plugins/Providers**: `dsh-codearts` (CodeArts Connect) should be
+3. Open **Settings → Plugins/Providers**: `dsh-codearts-connect` (CodeArts Connect) should be
    registered there.
 4. Open **Settings → the CodeArts card** (or codearts under Providers):
    - click “Sign in with Huawei Cloud” → the browser opens the authorization page → sign in;
@@ -46,11 +46,11 @@ Check in this order:
 
 1. Make sure DSH was fully quit before starting again (hot reload does not scan for *new*
    plugins).
-2. Check that `profiles/desktop/node_modules/dsh-codearts/lib/index.mjs` exists.
-3. Look for `dsh-codearts` errors in the DSH startup log (for example under
+2. Check that `profiles/desktop/node_modules/dsh-codearts-connect/lib/index.mjs` exists.
+3. Look for `dsh-codearts-connect` errors in the DSH startup log (for example under
    `profiles/desktop/.plugin-manager/logs/`) and send them to the developer.
-4. To uninstall completely: delete the `node_modules/dsh-codearts` directory and remove the
-   `dsh-codearts` entries from `profiles/desktop/package.json`,
+4. To uninstall completely: delete the `node_modules/dsh-codearts-connect` directory and remove the
+   `dsh-codearts-connect` entries from `profiles/desktop/package.json`,
    `node_modules/.package-map.json` and `node_modules/.modules.yaml` (the backups show
    exactly what to delete).
 
@@ -58,14 +58,14 @@ Check in this order:
 
 1. Build: `pnpm install && pnpm run build` (output lands in `lib/`).
 2. Copy this plugin’s `package.json` + `lib/` + `cordis.patch.yml` into the target DSH’s
-   `profiles/<profile>/node_modules/dsh-codearts/`.
-3. Add `"dsh-codearts": "<version>"` to `dependencies` in the target profile’s
+   `profiles/<profile>/node_modules/dsh-codearts-connect/`.
+3. Add `"dsh-codearts-connect": "<version>"` to `dependencies` in the target profile’s
    `package.json`.
 4. In `node_modules/.package-map.json` add
-   `"dsh-codearts": {"url":"./dsh-codearts","dependencies":{"dsh-codearts":"dsh-codearts"}}`
-   and add `"dsh-codearts":"dsh-codearts"` to the `"."` entry’s `dependencies`.
+   `"dsh-codearts-connect": {"url":"./dsh-codearts-connect","dependencies":{"dsh-codearts-connect":"dsh-codearts-connect"}}`
+   and add `"dsh-codearts-connect":"dsh-codearts-connect"` to the `"."` entry’s `dependencies`.
 5. In `node_modules/.modules.yaml` add
-   `"dsh-codearts@<version>": ["node_modules\\dsh-codearts"]` to `hoistedLocations`.
+   `"dsh-codearts-connect@<version>": ["node_modules\\dsh-codearts-connect"]` to `hoistedLocations`.
 6. Restart DSH.
 
 ## 5. Technical chain (verified independently)
@@ -76,7 +76,7 @@ Check in this order:
 | Token exchange (STS `/v1/oauth2/tokens`, form + DPoP) | ✅ AK/SK + refresh_token obtained |
 | Chat auth (`x-auth-token` + AK/SK HMAC signature) | ✅ HTTP 200 |
 | Chat endpoint `/api/v2/chat/completions` | ✅ OpenAI-compatible SSE |
-| Model discovery (built-in / benefit / agent-center) | ✅ merged live, see `dsh-codearts models` |
+| Model discovery (built-in / benefit / agent-center) | ✅ merged live, see `dsh-codearts-connect models` |
 | Local usage ledger (per day, per model, per account) | ✅ recorded from the stream’s usage frame |
 | Account identity (`/snap-manager/v1/current/user`) | ✅ stable `user_id` returned |
 
@@ -93,11 +93,11 @@ Check in this order:
 - The model list is **discovered** (built-in `/v1/model/builtin`, benefit
   `/api/v1/gateway/config`, agent-center `gpts.models`, merged), refreshed at startup and
   hourly, falling back to the built-in seed list when a source fails or nobody is signed in.
-  `dsh-codearts models` shows what upstream really returns.
+  `dsh-codearts-connect models` shows what upstream really returns.
 - The advertised `max_tokens` exceeds what the chat endpoint accepts (the benefit gateway
   advertises 393216; the endpoint reports `InferHub.001001005.400` above 65536). Requests
   are clamped to the measured ceiling — see `MEASURED_MAX_TOKENS`.
-- Usage shown in the card and by `dsh-codearts usage` is a **local ledger**
+- Usage shown in the card and by `dsh-codearts-connect usage` is a **local ledger**
   (`$DSH_HOME/.codearts-usage.json`, kept per day for 60 days): CodeArts has no quota API.
   Official detail is at
   `codearts.huaweicloud.com/portal/settings/personal-usage`.
@@ -136,7 +136,7 @@ console.log(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF?'BOM!':'no-BOM');
 
 ## 8. Update to 1.1.3+ fails with `ERR_PNPM_IGNORED_BUILDS`
 
-It is not actually a failed install — the `+ dsh-codearts 1.1.3` line means the package
+It is not actually a failed install — the `+ dsh-codearts-connect 1.1.3` line means the package
 already landed. What fails is pnpm 11's post-install check: since 1.1.3 the plugin bundles
 its own copy of `@earendil-works/pi-ai`, which transitively pulls `@google/genai` and
 `protobufjs`; both carry install-time scripts, pnpm 11 blocks unapproved dependency scripts

@@ -12,7 +12,7 @@
   请求会自动换到下一个账号，不必干等 —— 这是「停止生成后重新提问要等半分钟」的正解。
 - **可选模型**：可在设置卡片里勾选要出现在模型选择器中的模型（配置项 `enabledModels`）。未勾选的模型只是不再被推荐，已经选定它的会话仍可继续使用；不勾选等同于提供全部模型。
 - **模型清单自动发现**：启动后与每小时各拉一次账号真实可用的模型（内置 / 限时福利 / agent-center 三路合并），失败时退回内置种子清单。
-- **本机用量**：卡片与 `dsh-codearts usage` 展示今日/累计的请求数与输入输出 token（按模型、按账号），以及每个账号的**会话槽位占用**（占用时正好解释了「为什么刚才要等半分钟」）。CodeArts 没有额度接口，这里只统计本机经插件发出的请求，官方额度明细见卡片上的链接。
+- **本机用量**：卡片与 `dsh-codearts-connect usage` 展示今日/累计的请求数与输入输出 token（按模型、按账号），以及每个账号的**会话槽位占用**（占用时正好解释了「为什么刚才要等半分钟」）。CodeArts 没有额度接口，这里只统计本机经插件发出的请求，官方额度明细见卡片上的链接。
 - **图片输入**：支持视觉的模型可直接在对话里粘贴或拖入图片。
 - **降级路径**：也可以在卡片里直接粘贴安全令牌，适用于脚本或排查场景。
 - **命令行**：`status` / `models` / `usage` / `identity` / `doctor` / `logout` 六个子命令，便于在无图形界面时检查登录状态、发现模型与查用量。
@@ -20,7 +20,7 @@
 ## 安装
 
 详见 [INSTALL.md](./INSTALL.md)。核心是把 `package.json` + `lib/` + `cordis.patch.yml` 放进
-`profiles/<profile>/node_modules/dsh-codearts/`，并在 profile 的 `package.json`、
+`profiles/<profile>/node_modules/dsh-codearts-connect/`，并在 profile 的 `package.json`、
 `node_modules/.package-map.json`、`node_modules/.modules.yaml` 登记。
 
 ```sh
@@ -42,12 +42,12 @@ node scripts/deploy.mjs [profileDir]     # profileDir 默认 <用户目录>/.dsh
 ## 命令行
 
 ```sh
-dsh plugin --profile <profile> exec dsh-codearts status [--json]   # 登录状态与种子模型清单
-dsh plugin --profile <profile> exec dsh-codearts models [--json]   # 向上游发现当前账号的真实模型
-dsh plugin --profile <profile> exec dsh-codearts usage [--json]    # 本机用量账本（非账号额度）
-dsh plugin --profile <profile> exec dsh-codearts identity [--fix]  # 查/回填账号稳定身份，合并重复条目
-dsh plugin --profile <profile> exec dsh-codearts doctor            # 不涉及密钥的环境诊断
-dsh plugin --profile <profile> exec dsh-codearts logout            # 清除本插件保存的凭证
+dsh plugin --profile <profile> exec dsh-codearts-connect status [--json]   # 登录状态与种子模型清单
+dsh plugin --profile <profile> exec dsh-codearts-connect models [--json]   # 向上游发现当前账号的真实模型
+dsh plugin --profile <profile> exec dsh-codearts-connect usage [--json]    # 本机用量账本（非账号额度）
+dsh plugin --profile <profile> exec dsh-codearts-connect identity [--fix]  # 查/回填账号稳定身份，合并重复条目
+dsh plugin --profile <profile> exec dsh-codearts-connect doctor            # 不涉及密钥的环境诊断
+dsh plugin --profile <profile> exec dsh-codearts-connect logout            # 清除本插件保存的凭证
 ```
 
 `models` 是排查「模型选择器里怎么没有某个模型」的第一手段：它打印上游真实返回的清单
@@ -71,7 +71,7 @@ dsh plugin --profile <profile> exec dsh-codearts logout            # 清除本�
 DSH 对话窗口
    │  OpenAI /chat/completions 格式, Bearer=<本进程随机密钥>
    ▼
-dsh-codearts shim  (127.0.0.1:随机端口)
+dsh-codearts-connect shim  (127.0.0.1:随机端口)
    │  注入 x-auth-token: <华为云 STS security_token>
    │  + 华为云 AK/SK SDK-HMAC-SHA256 签名
    ▼
@@ -93,8 +93,8 @@ shim 只监听回环地址，并校验 Host、Origin 与本进程随机密钥，
   会**再问一次** `/snap-manager/v1/current/user` 拿稳定的 `user_id` 作为账号的自然键：
   同一个账号重新登录会更新原条目，不再变成新账号。这一步失败（网络/接口变动）时退回旧行为
   —— 用 DPoP 公钥当键，此时**同一账号重新登录会被当成新账号**，旧条目会因凭据失效而自行停用。
-  历史遗留的重复条目可以用 `dsh-codearts identity --fix` 合并到稳定键上（先不带 `--fix` 跑一次是只读的）。
-- 某个模型没出现时，用 `dsh-codearts models` 看上游到底返回了什么；上游标称的参数不一定可用：
+  历史遗留的重复条目可以用 `dsh-codearts-connect identity --fix` 合并到稳定键上（先不带 `--fix` 跑一次是只读的）。
+- 某个模型没出现时，用 `dsh-codearts-connect models` 看上游到底返回了什么；上游标称的参数不一定可用：
   福利网关把 `max_tokens` 标成 393216，而聊天端点实测超过 65536 就报
   `InferHub.001001005.400`。插件按**实测上限**下发请求（免费 DeepSeek 系列 65536、
   GLM-5.2 已实测可到 131072），没实测过的模型退回 65536 保守值。上下文长度用发现值，
@@ -106,7 +106,7 @@ shim 只监听回环地址，并校验 Host、Origin 与本进程随机密钥，
 
 ## 更新日志
 
-各版本的改动见 [CHANGELOG.md](https://github.com/elegant01/dsh-codearts/blob/main/CHANGELOG.md)。
+各版本的改动见 [CHANGELOG.md](https://github.com/2239058652/dsh-codearts-connect/blob/main/CHANGELOG.md)。
 
 ## 免责声明
 
@@ -120,6 +120,8 @@ shim 只监听回环地址，并校验 Host、Origin 与本进程随机密钥，
 
 ## 致谢
 
+- [dsh-codearts](https://github.com/elegant01/dsh-codearts)（MIT）— 本项目的上游，
+  `dsh-codearts-connect` 在其基础上二次开发。
 - [dsh-codebuddy-cli](https://github.com/fu827707013/dsh-codebuddy-cli)（MIT）— 本插件的
   DSH 插件结构、loopback shim 与 provider 注册方式均以其为参照。
 

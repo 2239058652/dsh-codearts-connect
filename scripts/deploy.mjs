@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dsh-codearts 部署脚本（安全版，无 BOM）。
+ * dsh-codearts-connect 部署脚本（安全版，无 BOM）。
  *
  * 替代危险的 PowerShell 5.1 Set-Content/Out-File 文本写入：那些会带 UTF-8 BOM，
  * 导致 DSH 宿主 readProfileManifest 裸 JSON.parse 抛 DesktopHostFatalError 而连环崩溃。
@@ -142,7 +142,7 @@ export function deploy(options = {}) {
 
   const src = SOURCE_DIR
   const pkg = JSON.parse(readFileSync(join(src, 'package.json'), 'utf8'))
-  const pkgName = pkg.name ?? 'dsh-codearts'
+  const pkgName = pkg.name ?? 'dsh-codearts-connect'
   const pkgVersion = pkg.version ?? '0.1.0'
 
   const srcLib = join(src, 'lib')

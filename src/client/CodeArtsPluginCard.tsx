@@ -528,12 +528,100 @@ function UsageSection({
   )
 }
 
+/**
+ * 复制文本。优先 Clipboard API；不可用（非安全上下文/老浏览器）时退回
+ * textarea + execCommand，保证「复制授权链接」在任何宿主里都能用。
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard !== undefined) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 落到下面的兜底
+  }
+  try {
+    if (typeof document === 'undefined') return false
+    const area = document.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    area.style.position = 'fixed'
+    area.style.top = '-1000px'
+    area.style.opacity = '0'
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand('copy')
+    area.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 「添加账号」弹框：只做一件事 —— 把授权链接摆到能复制的地方。
+ *
+ * 不在当前浏览器里自动打开是刻意的：华为云已有登录态时，授权页会直接发同一个
+ * 账号的 code，用户还没机会复制就已经「登录成功」，于是永远加不了第二个号。
+ * 复制到无痕窗口/另一个浏览器再授权，才能换一个身份。
+ */
+function AddAccountDialog({
+  url,
+  t,
+  onClose,
+}: {
+  url: string
+  t: CodeArtsPluginCardInjected['t']
+  onClose: () => void
+}): React.ReactElement {
+  const [copyState, setCopyState] = useState<'idle' | 'done' | 'failed'>('idle')
+  useEffect(() => {
+    setCopyState('idle')
+  }, [url])
+  const copy = async (): Promise<void> => {
+    setCopyState((await copyText(url)) ? 'done' : 'failed')
+  }
+  return (
+    <div className={styles.dialogOverlay}>
+      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={t('addAccountDialogTitle')}>
+        <div className={styles.dialogHead}>
+          <span className={styles.dialogTitle}>{t('addAccountDialogTitle')}</span>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            {t('addAccountDialogClose')}
+          </Button>
+        </div>
+        <p className={styles.dialogHint}>{t('addAccountDialogHint')}</p>
+        <textarea
+          className={styles.dialogUrl}
+          readOnly
+          rows={3}
+          value={url}
+          onFocus={event => event.currentTarget.select()}
+        />
+        <p className={styles.dialogHint}>{t('addAccountDialogWaiting')}</p>
+        <div className={styles.dialogActions}>
+          <Button variant="primary" size="sm" onClick={() => void copy()}>
+            {copyState === 'done'
+              ? t('addAccountDialogCopied')
+              : copyState === 'failed'
+                ? t('addAccountDialogCopyFailed')
+                : t('addAccountDialogCopy')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.ReactElement {  const [status, setStatus] = useState<LocalStatus | null>(null)
   const [token, setToken] = useState('')
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
+  /** 授权链接弹框是否打开。关掉后链接仍留在卡片上，登录轮询继续。 */
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [loginPending, setLoginPending] = useState(false)
   const [selection, setSelection] = useState<ModelSelectionDoc['selection'] | null>(null)
   const [draft, setDraft] = useState<string[]>([])
@@ -732,6 +820,30 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
     }
   }
 
+  /** 手动指定优先账号；`null` = 恢复自动轮转。 */
+  async function preferAccount(id: string | null): Promise<void> {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/codearts/account-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`)
+      }
+      await refresh()
+    } catch (error: unknown) {
+      setMsg(t('accountPreferenceFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // 服务端把「空数组」当作「不加限制 = 全部可用」，所以全选时回写空数组。
   const all = selection?.choices.length ?? 0
   const blockedCount = selection?.choices.filter(c => c.blocked === true).length ?? 0
@@ -815,8 +927,9 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
         return
       }
       setLoginUrl(data.url)
-      // 打开浏览器让用户登录
-      if (typeof window !== 'undefined') window.open(data.url, '_blank')
+      setLoginDialogOpen(true)
+      // 不在这里自动 window.open：当前浏览器若已登录华为云，会直接授权成同一个
+      // 账号，用户连复制链接的机会都没有。弹框负责给出链接，让用户换浏览器/无痕。
       // 轮询登录结果
       const poll = async (): Promise<void> => {
         const r = await fetch(`/api/codearts/login/status?url=${encodeURIComponent(data.url)}`, {
@@ -825,12 +938,14 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
         const st = await r.json().catch(() => ({ status: 'pending' }))
         if (st.status === 'done') {
           setLoginUrl(null)
+          setLoginDialogOpen(false)
           setLoginPending(false)
           await refresh()
           return
         }
         if (st.status === 'error') {
           setLoginUrl(null)
+          setLoginDialogOpen(false)
           setLoginPending(false)
           setMsg(t('loginFailed'))
           return
@@ -840,6 +955,7 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
         // 真实结果（加上就是多一个账号，没加上就是没变）。
         if (st.status === 'idle') {
           setLoginUrl(null)
+          setLoginDialogOpen(false)
           setLoginPending(false)
           await refresh()
           return
@@ -860,6 +976,10 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
   const accounts = status?.accounts ?? []
   const accountName = (account: { label?: string; userName?: string; id: string }): string =>
     account.label?.trim() || account.userName?.trim() || account.id
+  // 设置里的 id 可能指向已删除的账号（例如手改文件）；只有还存在的号才当选中态。
+  const preferredRaw = status?.preferredAccountId?.trim() ?? ''
+  const preferredId = accounts.some(account => account.id === preferredRaw) ? preferredRaw : ''
+  const preferredAccount = accounts.find(account => account.id === preferredId)
   /**
    * 每个账号的「获取时间 + 过期状态」。同一账号重复登录可能留下多条记录（上游不给
    * 稳定身份时的妥协），把时间摆出来用户才能一眼认出哪条是旧的、放心删。
@@ -1031,6 +1151,18 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
                             {accountLine !== '' && <span className={styles.meta}>{accountLine}</span>}
                           </div>
                           <div className={styles.accountRowActions}>
+                            {accounts.length > 1 && (preferredId === account.id ? (
+                              <Tag tone="success">{t('accountInUse')}</Tag>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void preferAccount(account.id)}
+                              >
+                                {t('accountUse')}
+                              </Button>
+                            ))}
                             <Button
                               variant="outline"
                               size="sm"
@@ -1056,6 +1188,21 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
                       </div>
                     )
                   })}
+                  {preferredAccount !== undefined && (
+                    <div className={styles.accountModeRow}>
+                      <span className={styles.accountModeText}>
+                        {t('accountPinnedHint', { name: accountName(preferredAccount) })}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void preferAccount(null)}
+                      >
+                        {t('accountAuto')}
+                      </Button>
+                    </div>
+                  )}
                   {accounts.length > 1 && (
                     <div className={styles.claimAllRow}>
                       <Button
@@ -1220,6 +1367,9 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
 
         {msg !== null && <p className={styles.error}>{msg}</p>}
       </div>
+      {loginUrl !== null && loginDialogOpen && (
+        <AddAccountDialog url={loginUrl} t={t} onClose={() => setLoginDialogOpen(false)} />
+      )}
     </div>
   )
 }
