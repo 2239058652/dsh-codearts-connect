@@ -3,12 +3,16 @@ import {
   backfillParams,
   benefitBlockedModels,
   clearBenefitBlocked,
+  clearImageBlocked,
   CodeArtsCatalog,
   creditRatioLabel,
   discoveredBenefitModels,
+  imageBlockedModels,
   isBenefitBlocked,
   isBenefitModel,
+  isImageBlocked,
   markBenefitBlocked,
+  markImageBlocked,
   mergeModelLists,
   modelDisplayName,
   setDiscoveredBenefitModels,
@@ -17,7 +21,7 @@ import {
 } from '../src/catalog.ts'
 import { refreshCatalog } from '../src/discovery.ts'
 import { thinkingFields } from '../src/adapter.ts'
-import { fetchModels, maxTokensCeilingFor, MAX_TOKENS_CEILING } from '../src/upstream.ts'
+import { fetchModels, isNotMultimodal, maxTokensCeilingFor, MAX_TOKENS_CEILING } from '../src/upstream.ts'
 
 const model = (id: string, patch: Partial<CodeArtsModelInfo> = {}): CodeArtsModelInfo => ({
   id,
@@ -460,5 +464,47 @@ describe('refreshCatalog 的显示名', () => {
     expect(byId.get('glm-5.2-sft-harmony')?.name).toBe('GLM-5.2-ArkTS-SPARK · x0.70')
     // 上游没给 credit 的保持原名，不硬编 x1.00。
     expect(byId.get('Qwen3-VL-235B')?.name).toBe('Qwen3-VL-235B')
+  })
+})
+
+describe('图片能力黑名单', () => {
+  afterEach(() => {
+    clearImageBlocked()
+  })
+
+  // 上游清单给 GLM-5.2 标 supports_images: true，聊天端点却回「not multimodal」。
+  // 目录合并时上游那条会赢过种子表，所以必须在这里兜住。
+  it('人工确认不收图的模型，进目录时被摘掉图片能力', () => {
+    const catalog = new CodeArtsCatalog()
+    catalog.set([model('GLM-5.2', { supportsImages: true }), model('Qwen3-VL-235B', { supportsImages: true })])
+    const byId = new Map(catalog.current().map(m => [m.id, m]))
+    expect(byId.get('GLM-5.2')?.supportsImages).toBe(false)
+    expect(byId.get('Qwen3-VL-235B')?.supportsImages).toBe(true)
+  })
+
+  // 运行时学到的：第一次被拒后记下来，**不用等下一次 set()**（发现循环一小时才跑一次）。
+  it('运行时被拒过的模型立刻从 current() 里消失图片能力', () => {
+    const catalog = new CodeArtsCatalog()
+    catalog.set([model('kimi-k3', { supportsImages: true })])
+    expect(catalog.current()[0]?.supportsImages).toBe(true)
+
+    markImageBlocked('kimi-k3')
+
+    expect(catalog.current()[0]?.supportsImages).toBe(false)
+    expect(imageBlockedModels()).toEqual(['kimi-k3'])
+  })
+
+  it('刷新模型列表会清掉运行时记录，但人工名单留着', () => {
+    markImageBlocked('kimi-k3')
+    clearImageBlocked()
+    expect(imageBlockedModels()).toEqual([])
+    expect(isImageBlocked('kimi-k3')).toBe(false)
+    expect(isImageBlocked('GLM-5.2')).toBe(true)
+  })
+
+  it('判据认两种上游错误码，认不出的不放行', () => {
+    expect(isNotMultimodal('InferHub.001001020.406', 'The request model is not multimodal')).toBe(true)
+    expect(isNotMultimodal('InferHub.001001046.406', 'The multimodal content of the multimodal request is incorrect.')).toBe(true)
+    expect(isNotMultimodal('InferHub.001001005.400', 'The request param is invalid')).toBe(false)
   })
 })

@@ -17,6 +17,7 @@ import {
   backfillParams,
   isBenefitModel,
   markBenefitBlocked,
+  markImageBlocked,
   mergeModelLists,
   type CodeArtsModelInfo,
 } from './catalog.ts'
@@ -457,6 +458,7 @@ export function upstreamErrorMessage(message: string, status = 0): string {
   if (message.toLowerCase().includes('model is not registered')) {
     return '上游没有注册这个模型，它可能已经下线；请刷新模型列表后重选。'
   }
+  if (isNotMultimodal('', message)) return IMAGE_UNSUPPORTED_MESSAGE
   return `codearts 上游错误 (http ${status}): ${message.slice(0, 400)}`
 }
 
@@ -473,6 +475,33 @@ export const BENEFIT_MISSING_CODE = 'InferHub.4004.200'
 export function isBenefitMissing(code: string, message: string): boolean {
   return code === BENEFIT_MISSING_CODE || message.toLowerCase().includes('benefit not found')
 }
+
+/**
+ * 上游拒绝图片的判据（两条错误码都实测见过）。
+ *
+ *  - `InferHub.001001020.406`：`The request model is not multimodal` —— 模型不吃图。
+ *  - `InferHub.001001046.406`：`The multimodal content of the multimodal request is
+ *    incorrect` —— 图片字段形状不对（例如 `image_url` 直接给字符串）。
+ *
+ * 只用来判断「这次带图的请求被拒了」，因此调用方必须先确认请求体里确实有图片，
+ * 否则一条纯文本请求撞上同类错误会被误记成模型不支持图片。
+ */
+export function isNotMultimodal(code: string, message: string): boolean {
+  return code.includes('001001020')
+    || code.includes('001001046')
+    || /not multimodal|multimodal content/i.test(message)
+}
+
+/**
+ * 带图请求撞上纯文本模型时给用户看的话。
+ *
+ * 上游只会回一句英文 `The request model is not multimodal`，用户会以为是插件坏了；
+ * 实际上 CodeArts 的聊天 API 只对 VL 模型收图 —— 网页端能读图走的是另一套
+ * `cloudagent` 附件服务（图片先上传成 attachment_id，由服务端解析），和这条
+ * AK/SK 签名的 API 不是同一条链路。所以这里把出路直接写清楚。
+ */
+export const IMAGE_UNSUPPORTED_MESSAGE =
+  '这个模型在 API 里不收图片（上游返回 not multimodal）。要发图请改用 Qwen3-VL-235B 或 kimi-k2.6-vl；网页端能读图是因为它走的是另一套附件服务。'
 
 /**
  * 本地代理「拒签」标记：billion-context 这类宿主层代理拦截出站请求做上下文压缩，
@@ -553,6 +582,8 @@ export async function chatStream(
 ): Promise<ChatResult> {
   const traceId = randomTraceId()
   const bodyBuf = Buffer.from(prepared.body)
+  // 这次请求带没带图：只有带图的请求被回「不是多模态」才说明这个模型不收图。
+  const hadImage = prepared.body.includes('"image_url"')
   // 限时福利（免费套餐）模型必须带 maas_type: benefit 头，且要在签名前设置
   // （signer 会把请求里的所有 header 计入 SignedHeaders）。
   const benefit = isBenefitModel(prepared.model)
@@ -604,6 +635,7 @@ export async function chatStream(
   if (!resp.ok) {
     const text = await resp.text().catch(() => '')
     if (isBenefitMissing('', text)) markBenefitBlocked(prepared.model)
+    if (hadImage && isNotMultimodal('', text)) markImageBlocked(prepared.model)
     return { ok: false, kind: classify(resp.status, text), status: resp.status, message: text.slice(0, 400) }
   }
 
@@ -668,10 +700,19 @@ export async function chatStream(
               // 福利权益缺失要落到目录状态里：卡片得把这条模型标成「今日不可用」，
               // 而不是让用户对着裸的 "benefit not found" 猜是自己哪里配错了。
               if (isBenefitMissing(String(ev.error_code), String(ev.error_msg ?? ''))) markBenefitBlocked(model)
+              // 带图的请求被回「不是多模态」：把这个模型记下来，下一次进目录时摘掉
+              // 图片能力，免得用户对着一个纯文本模型反复贴图。
+              if (hadImage && isNotMultimodal(String(ev.error_code), String(ev.error_msg ?? ''))) {
+                markImageBlocked(model)
+              }
+              const upstreamMsg = String(ev.error_msg ?? 'upstream error')
+              const friendlyMsg = hadImage && isNotMultimodal(String(ev.error_code), upstreamMsg)
+                ? IMAGE_UNSUPPORTED_MESSAGE
+                : upstreamMsg
               controller.enqueue(
                 openAIData({
                   choices: [{ delta: { content: '' }, finish_reason: 'stop' }],
-                  error: { code: ev.error_code, message: ev.error_msg ?? 'upstream error' },
+                  error: { code: ev.error_code, message: friendlyMsg },
                 }),
               )
               controller.enqueue(openAIDone())

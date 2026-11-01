@@ -44,7 +44,12 @@ export { createCodeArtsShim, type CodeArtsShim } from './shim.ts'
 export {
   FALLBACK_CODEARTS_MODELS,
   CodeArtsCatalog,
+  clearBenefitBlocked,
+  clearImageBlocked,
   filterEnabledModels,
+  imageBlockedModels,
+  isImageBlocked,
+  markImageBlocked,
   type CodeArtsModelInfo,
 } from './catalog.ts'
 export {

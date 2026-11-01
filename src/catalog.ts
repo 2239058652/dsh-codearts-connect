@@ -65,7 +65,9 @@ export interface CodeArtsModelInfo {
  * max_tokens 原样发给上游，导致所有请求直接失败。
  */
 export const FALLBACK_CODEARTS_MODELS: readonly CodeArtsModelInfo[] = [
-  { id: 'GLM-5.2', name: 'GLM-5.2', contextWindow: 128_000, maxTokens: 8_000, supportsImages: true },
+  // 上游清单给 GLM-5.2 标了 supports_images: true，但聊天端点实测回
+  // InferHub.001001020.406 "The request model is not multimodal"（2026-10-31 直连实测）。
+  { id: 'GLM-5.2', name: 'GLM-5.2', contextWindow: 128_000, maxTokens: 8_000, supportsImages: false },
   { id: 'GLM-5.1', name: 'GLM-5.1', contextWindow: 128_000, maxTokens: 8_000, supportsImages: false },
   { id: 'GLM-4.7', name: 'GLM-4.7', contextWindow: 128_000, maxTokens: 8_000, supportsImages: true },
   { id: 'OpenPangu-2.0-Pro', name: 'OpenPangu 2.0 Pro', contextWindow: 32_000, maxTokens: 4_000, supportsImages: true },
@@ -76,11 +78,13 @@ export const FALLBACK_CODEARTS_MODELS: readonly CodeArtsModelInfo[] = [
   { id: 'deepseek-v4-flash-0731', name: 'DeepSeek-V4-Flash (福利)', contextWindow: 131_072, maxTokens: 65_536, supportsImages: true },
   { id: 'deepseek-v4-pro-0813', name: 'DeepSeek-V4-Pro (福利)', contextWindow: 131_072, maxTokens: 65_536, supportsImages: true },
   // 裸别名上游不算多模态：带图直接报 "The request model is not multimodal"（issue #4）。
-  // 带日期的 -1017 才是多模态那个 —— 上游发现接口对它的 supports_images 也给 false，
-  // 但 issue #4 的报告者实测带图可用，按实测为准标 true。
+  // 带日期的 -1017 也一样：上游发现接口给它 supports_images: true，但聊天端点
+  // 2026-10-31 直连实测同样回 InferHub.001001020.406，图片根本进不去。
+  // 真正能收图的是 VL 系（Qwen3-VL-235B / kimi-k2.6-vl 同条件实测均 200 并读出了图）。
   { id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash', contextWindow: 131_072, maxTokens: 65_536, supportsImages: false },
-  { id: 'deepseek-v4.1-flash-1017', name: 'DeepSeek-V4.1-Flash-1017', contextWindow: 1_048_576, maxTokens: 65_536, supportsImages: true },
-  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash (福利)', contextWindow: 128_000, maxTokens: 8_000, supportsImages: true },
+  { id: 'deepseek-v4.1-flash-1017', name: 'DeepSeek-V4.1-Flash-1017', contextWindow: 1_048_576, maxTokens: 65_536, supportsImages: false },
+  // 用户实测带图同样报 not multimodal（2026-10-31）。
+  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash (福利)', contextWindow: 128_000, maxTokens: 8_000, supportsImages: false },
 ]
 
 /**
@@ -132,13 +136,34 @@ export function stripModelSuffixes(name: string): string {
 export class CodeArtsCatalog {
   /** 空目录起步：没发现过就是没有模型，不拿历史名单冒充。 */
   private models: readonly CodeArtsModelInfo[] = []
+  private normalized: readonly CodeArtsModelInfo[] = []
+  /** 上次归一化时图片黑名单的大小 —— 黑名单是运行时长的，变了就得重算。 */
+  private normalizedWithBlocked = 0
 
   current(): readonly CodeArtsModelInfo[] {
-    return this.models
+    // 归一化放在读取侧：`markImageBlocked` 是在发请求的过程中被调用的，那里拿不到
+    // 目录对象；等下一次谁读目录时再纠正，不必等一小时后的那次发现。
+    if (this.normalizedWithBlocked !== imageBlocked.size) {
+      this.normalized = this.normalize(this.models)
+      this.normalizedWithBlocked = imageBlocked.size
+    }
+    return this.normalized
   }
 
   set(models: readonly CodeArtsModelInfo[]): void {
     this.models = [...models]
+    this.normalized = this.normalize(this.models)
+    this.normalizedWithBlocked = imageBlocked.size
+  }
+
+  /**
+   * 上游清单爱把纯文本模型标成 `supports_images: true`（GLM-5.2、-1017 实测都这样），
+   * 被它骗过一次的模型在这里一律摘掉图片能力。
+   */
+  private normalize(models: readonly CodeArtsModelInfo[]): readonly CodeArtsModelInfo[] {
+    return models.map(model =>
+      model.supportsImages && isImageBlocked(model.id) ? { ...model, supportsImages: false } : model,
+    )
   }
 }
 
@@ -234,6 +259,61 @@ export function benefitBlockedModels(): readonly string[] {
 /** 清空福利缺失记录 —— 手动刷新模型列表时调，给用户一个自救出口。 */
 export function clearBenefitBlocked(): void {
   benefitBlocked.clear()
+}
+
+/**
+ * 运行时学到的「这个模型不收图」（小写 id）。
+ *
+ * 上游 `/v1/model/builtin` 会给一批纯文本模型标 `supports_images: true`
+ * （GLM-5.2、deepseek-v4.1-flash-1017 等），但带图请求一律被聊天端点回
+ * `InferHub.001001020.406 The request model is not multimodal`；同条件下
+ * Qwen3-VL-235B / kimi-k2.6-vl 却能正常收图（2026-10-31 直连实测）。
+ *
+ * 清单不可信，唯一可靠的判据是「发一次带图请求看上游认不认」。人工实测过的进
+ * `KNOWN_TEXT_ONLY`，其余靠这里在第一次被拒时记下来。进程内有效 —— 与福利缺失
+ * 标记同一套做法。
+ */
+const imageBlocked = new Set<string>()
+
+/**
+ * 已经人工实测**确认不收图**的模型（小写 id）。
+ *
+ * 为什么种子表标 false 不够：目录是把上游发现结果与种子表合并出来的，上游那条
+ * `supports_images: true` 会凭「参数更全」赢过种子的 false。所以这里单列一条硬名单，
+ * 与运行时黑名单一起把图片能力摘掉。
+ *
+ * 名单来源（2026-10-31 用插件同一条签名链路直连实测）：
+ *  - GLM-5.2、deepseek-v4.1-flash-1017 → `InferHub.001001020.406`
+ *  - glm-5.3-flash → 用户实测同一错误
+ * 对照组能正常收图：Qwen3-VL-235B、kimi-k2.6-vl（同条件 HTTP 200 且读出了图）。
+ */
+const KNOWN_TEXT_ONLY = new Set([
+  'glm-5.2',
+  'deepseek-v4.1-flash',
+  'deepseek-v4.1-flash-1017',
+  'glm-5.3-flash',
+])
+
+/** 该模型是否不收图（人工确认或运行时被拒过）。 */
+export function isImageBlocked(id: string): boolean {
+  const key = id.trim().toLowerCase()
+  return key !== '' && (KNOWN_TEXT_ONLY.has(key) || imageBlocked.has(key))
+}
+
+/** 记一次「这个模型不收图」。 */
+export function markImageBlocked(id: string): void {
+  const key = id.trim().toLowerCase()
+  if (key !== '') imageBlocked.add(key)
+}
+
+/** 运行时被拒过图片的模型（排序副本，供诊断输出；不含人工名单）。 */
+export function imageBlockedModels(): readonly string[] {
+  return [...imageBlocked].sort()
+}
+
+/** 清空图片能力黑名单 —— 与福利标记一起，由手动刷新模型列表重置。 */
+export function clearImageBlocked(): void {
+  imageBlocked.clear()
 }
 
 /**

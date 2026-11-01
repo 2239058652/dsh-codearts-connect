@@ -327,6 +327,11 @@ describe('TPM rate limiting', () => {
       .toContain('3 个会话')
     expect(upstreamErrorMessage('InferHub.4004.200: benefit not found'))
       .toContain('限时福利')
+    // 图片被纯文本模型拒绝：不能只甩一句 not multimodal，要给出可用的出路。
+    expect(upstreamErrorMessage('InferHub.001001020.406: The request model is not multimodal'))
+      .toContain('Qwen3-VL-235B')
+    expect(upstreamErrorMessage('InferHub.001001046.406: The multimodal content of the multimodal request is incorrect.'))
+      .toContain('Qwen3-VL-235B')
     expect(upstreamErrorMessage('weird failure', 500)).toContain('weird failure')
   })
 })

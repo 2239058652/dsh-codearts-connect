@@ -28,6 +28,7 @@ import {
   isParamInvalidFrame,
   isQueueableRate,
   isTpmLimit,
+  IMAGE_UNSUPPORTED_MESSAGE,
   maxTokensCeilingFor,
   prepareChatBody,
   rateLimitFrame,
@@ -443,6 +444,14 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     noteRequestShape(raw, checked.model)
     if (checked.error !== undefined) {
       writeOpenAIError(res, 400, 'context_overflow', checked.error)
+      return
+    }
+    // 已经知道这个模型不收图（人工实测或运行时被拒过）时，本地直接给一句人话：
+    // 省掉一次必然失败的上游请求，也别让用户对着 «not multimodal» 猜自己哪里错了。
+    const wantsImage = raw.includes('"image_url"') || raw.includes('"type":"image"')
+    const modelInfo = catalog.current().find(model => model.id.toLowerCase() === checked.model.toLowerCase())
+    if (wantsImage && modelInfo?.supportsImages === false) {
+      writeOpenAIError(res, 400, 'image_not_supported', IMAGE_UNSUPPORTED_MESSAGE)
       return
     }
     const controller = new AbortController()

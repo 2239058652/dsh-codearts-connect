@@ -26,6 +26,7 @@ import { hostIsLoopback, originIsLoopback } from './loopback.ts'
 import { probePiAiCompat } from './pi-ai-compat.ts'
 import {
   clearBenefitBlocked,
+  clearImageBlocked,
   creditRatioLabel,
   filterEnabledModels,
   isBenefitBlocked,
@@ -879,6 +880,9 @@ function refreshModelsHandler(deps: CodeArtsStatusRouteOptions) {
     }
     try {
       clearBenefitBlocked()
+      // 运行时学到的「不收图」也一起清：万一上游改了行为，刷新是用户的唯一出口。
+      // 人工实测确认的那份名单在 catalog 里，不受这里影响。
+      clearImageBlocked()
       const counted = await deps.refreshModels()
       const selection = selectionOf(
         choicesOf(deps),

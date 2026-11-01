@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement, type Mouse
 import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CodeArtsDockFlags, CodeArtsWebStatus } from '../web-status.ts'
 import { stripModelSuffixes } from '../catalog.ts'
-import { buildDockLine, DOCK_SEGMENT_SEPARATOR } from './dock-line.ts'
+import { DOCK_SEGMENT_SEPARATOR } from './dock-line.ts'
 import {
   ensureSuppressStyle,
   markForeignDockEntries,
@@ -334,28 +334,26 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
 
   const showCredits = flags.credits && remain !== null
   const showQueue = flags.queue && queued !== null
+  // 开关都关了（或没有数据）就整条不渲染，别再留一个空节点占位。
+  if (!showCredits && !showQueue) return null
 
-  // 一行分段，与 dsh-codebuddy-cli 的底栏同构（`积分 1,642 · Provider CodeBuddy ·
-  // Model GLM-5.3 · x0.79`）：积分在最前，然后 provider、模型、倍率，最后是我们的排队段。
-  // 段序与分隔符由 dock-line.ts 的纯函数说了算，这里只负责取数。
+  // 底栏只留一个小图标：积分数字 + `Provider · Model · 倍率` 一起常驻时，这条
+  // **所有插件共用**的 composer dock 行会被撑得很宽，把宿主自己的金额/token 统计
+  // 挤掉。现在整条信息都收进弹层 —— 图标只负责开面板，标题里保留完整读法。
   //
-  // 只有积分那一段是可点击的（点开逐号明细）；模型/倍率/排队是纯文本。别把整行做成
-  // 按钮 —— 那样点模型名也会弹积分面板。
+  // 只有图标是可点击的；排队段（事件性文案）仍以纯文本跟在后面，只在等开流时出现。
   const modelId = currentOf(selection)?.model
   const entry = modelId === undefined ? undefined : modelInfo[modelId]
-  // 名字剥掉 ` · x0.18` 尾巴：倍率要单独成段，否则同一行里会出现两次。
+  // 名字剥掉 ` · x0.18` 尾巴：倍率单独成段，面板里不会出现两次。
   const modelLabel = entry === undefined
     ? modelId ?? ''
     : stripModelSuffixes(entry.name)
   const ratio = entry?.ratio
-
-  const line = buildDockLine({
-    ...showCredits ? { credits: t('creditsDock', { remain: formatNumber(remain ?? 0) }) } : {},
-    provider: 'CodeArts',
-    ...modelLabel === '' ? {} : { model: modelLabel },
-    ...ratio === undefined ? {} : { ratio },
-    ...showQueue && queued !== null ? { queue: t('queueDock', { position: queued.position }) } : {},
-  }, t)
+  const identity = [
+    t('dockProvider', { provider: 'CodeArts' }),
+    modelLabel === '' ? t('dockNoModel') : t('dockModel', { model: modelLabel }),
+    ...ratio === undefined ? [] : [ratio],
+  ].join(DOCK_SEGMENT_SEPARATOR)
 
   const queueTitle = queued === null
     ? undefined
@@ -402,39 +400,50 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
         flex: '0 0 auto',
         minWidth: 'max-content',
       }}
-      title={queueTitle ?? creditsTitle}
+      title={[identity, creditsTitle, queueTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
     >
       {/*
-        **只有积分那一段**是开弹层的按钮：这是本插件原来的设定，别为了对齐邻居把它
-        扩成整行 —— 那样点模型名/倍率也会弹出积分面板。
+        整条底栏只剩一个图标：数字与被挤掉的模型信息都收进弹层，把 composer dock
+        的横向空间还给宿主的金额/token 统计。
         输入框那一坨是个表单，button 不写 type 默认 submit —— 点一下会把草稿当消息发出去。
       */}
-      {line.credits !== undefined && (
+      {showCredits && (
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={anchor !== null}
+          aria-label={t('creditsDockPanelTitle')}
+          title={[identity, creditsTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
+          onClick={toggle}
+          style={{
+            all: 'unset',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 'none',
+            boxSizing: 'border-box',
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            border: '0.5px solid var(--dsw-alias-border-l2)',
+            background: 'var(--dsw-alias-bg-layer-3)',
+            color: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="6.2" cy="8" r="4.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <circle cx="9.8" cy="8" r="4.3" fill="none" stroke="currentColor" strokeWidth="1.3" opacity="0.45" />
+          </svg>
+        </button>
+      )}
+      {showQueue && (
         <>
-          <button
-            ref={triggerRef}
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={anchor !== null}
-            aria-label={t('creditsDockPanelTitle')}
-            title={creditsTitle}
-            onClick={toggle}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              font: 'inherit',
-              color: 'inherit',
-              fontVariantNumeric: 'inherit',
-              lineHeight: 'inherit',
-              whiteSpace: 'inherit',
-            }}
-          >
-            {line.credits}
-          </button>
-          <span aria-hidden="true">{DOCK_SEGMENT_SEPARATOR}</span>
+          {showCredits && <span aria-hidden="true">{DOCK_SEGMENT_SEPARATOR}</span>}
+          <span>{t('queueDock', { position: queued.position })}</span>
         </>
       )}
-      <span>{line.rest}</span>
       {anchor !== null && (
         <div
           ref={panelRef}
@@ -471,6 +480,9 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
               {refreshing ? t('creditsDockRefreshing') : t('creditsDockRefresh')}
             </Button>
           </div>
+
+          {/* 底栏只剩图标，Provider / Model / 倍率收在这里，点开仍能看全。 */}
+          <div style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>{identity}</div>
 
           <div
             style={{
