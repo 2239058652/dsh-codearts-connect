@@ -46,6 +46,7 @@ interface CodeArtsSettingsKey {
   benefitBlocked: string;
   benefitBlockedHint: string;
   modelImages: string;
+  modelImagesBridge: string;
   refreshModels: string;
   refreshing: string;
   refreshed: string;
@@ -99,6 +100,16 @@ interface CodeArtsSettingsKey {
   creditsDock: string;
   creditsDockTitle: string;
   creditsDockPanelTitle: string;
+  creditsDockCurrentAccount: string;
+  creditsDockCurrentAuto: string;
+  creditsDockSwitchHint: string;
+  creditsDockAuto: string;
+  creditsDockSwitchFailed: string;
+  creditsDockLastAccount: string;
+  creditsDockFallback: string;
+  imageBridgeToggle: string;
+  imageBridgeNotWritable: string;
+  imageBridgeFailed: string;
   creditsDockRefresh: string;
   creditsDockRefreshing: string;
   creditsDockColAccount: string;

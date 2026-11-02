@@ -459,6 +459,7 @@ export function upstreamErrorMessage(message: string, status = 0): string {
     return '上游没有注册这个模型，它可能已经下线；请刷新模型列表后重选。'
   }
   if (isNotMultimodal('', message)) return IMAGE_UNSUPPORTED_MESSAGE
+  if (message.startsWith('图片转述失败')) return message
   return `codearts 上游错误 (http ${status}): ${message.slice(0, 400)}`
 }
 
@@ -768,6 +769,188 @@ export async function chatStream(
   })
 
   return { ok: true, stream }
+}
+
+/** 默认的图片转述模型；实测能读图，且比商业视觉模型便宜。 */
+export const DEFAULT_IMAGE_BRIDGE_MODEL = 'Qwen3-VL-235B'
+
+const IMAGE_CAPTION_PROMPT =
+  '你是图片转述器。请客观描述这张图片：保留其中可见的文字、数字、界面元素、图表与布局关系；'
+  + '不要推测看不见的内容。用中文回答，200 字以内。'
+
+/** 图片转述缓存：同一张图在后续轮次不重复花钱。只在内存里，进程重启即清。 */
+const captionCache = new Map<string, string>()
+const CAPTION_CACHE_LIMIT = 128
+
+export type ImageBridgeResult =
+  | { ok: true; body: string; images: number }
+  | { ok: false; message: string }
+
+function imageUrlsOf(parsed: Record<string, unknown>): string[] {
+  const urls: string[] = []
+  const messages = Array.isArray(parsed.messages) ? parsed.messages : []
+  for (const raw of messages) {
+    if (raw === null || typeof raw !== 'object') continue
+    const content = (raw as { content?: unknown }).content
+    if (!Array.isArray(content)) continue
+    for (const part of content) {
+      if (part === null || typeof part !== 'object') continue
+      const typed = part as { type?: unknown; image_url?: unknown }
+      if (typed.type !== 'image_url') continue
+      const source = typed.image_url
+      if (typeof source === 'string' && source !== '') urls.push(source)
+      else if (source !== null && typeof source === 'object') {
+        const url = (source as { url?: unknown }).url
+        if (typeof url === 'string' && url !== '') urls.push(url)
+      }
+    }
+  }
+  return urls
+}
+
+/** 从非流式响应（偶尔也可能是 SSE）里取出正文。 */
+function captionTextOf(raw: string): string {
+  try {
+    const json = JSON.parse(raw) as { choices?: { message?: { content?: unknown } }[] }
+    const content = json.choices?.[0]?.message?.content
+    if (typeof content === 'string') return content
+  } catch {
+    // 落到 SSE 兜底
+  }
+  let text = ''
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const payload = trimmed.slice(5).trim()
+    if (payload === '' || payload === '[DONE]') continue
+    try {
+      const ev = JSON.parse(payload) as {
+        choices?: { message?: { content?: unknown }; delta?: { content?: unknown } }[]
+      }
+      const content = ev.choices?.[0]?.delta?.content ?? ev.choices?.[0]?.message?.content
+      if (typeof content === 'string') text += content
+    } catch {
+      // 半帧忽略
+    }
+  }
+  return text
+}
+
+async function captionImage(
+  credential: CodeArtsResolved,
+  model: string,
+  url: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const key = createHash('sha256').update(model).update('\0').update(url).digest('hex')
+  const cached = captionCache.get(key)
+  if (cached !== undefined) return cached
+
+  const body = JSON.stringify({
+    model,
+    stream: false,
+    max_tokens: 512,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: IMAGE_CAPTION_PROMPT },
+        { type: 'image_url', image_url: { url } },
+      ],
+    }],
+  })
+  const bodyBuf = Buffer.from(body)
+  const req = new Request(`${SNAP_HOST}${EP_CHAT}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'x-auth-token': credential.token,
+      'X-Security-Token': credential.securityToken,
+      'x-snap-traceid': randomTraceId(),
+      'X-Language': 'zh-cn',
+      'app-id': 'CodeAgent3.0',
+      'is_confidential': 'false',
+      ...(isBenefitModel(model) ? { 'maas_type': 'benefit' } : {}),
+    },
+    body: bodyBuf,
+  })
+  if (credential.accessKeyId && credential.secretAccessKey) {
+    signRequest(req, bodyBuf, {
+      accessKeyId: credential.accessKeyId,
+      secretAccessKey: credential.secretAccessKey,
+      securityToken: credential.securityToken,
+    })
+  }
+  const resp = await dispatch(req, bodyBuf, signal)
+  const raw = await resp.text().catch(() => '')
+  if (!resp.ok) {
+    throw new Error(`图片转述请求失败：HTTP ${resp.status} ${raw.slice(0, 200)}`)
+  }
+  const caption = captionTextOf(raw).trim()
+  if (caption === '') throw new Error('图片转述返回了空内容')
+  if (captionCache.size >= CAPTION_CACHE_LIMIT) {
+    const oldest = captionCache.keys().next().value
+    if (oldest !== undefined) captionCache.delete(oldest)
+  }
+  captionCache.set(key, caption)
+  return caption
+}
+
+/**
+ * 把请求体里的图片替换成视觉模型的中文描述，供纯文本模型使用。
+ *
+ * 用**非流式**请求：上游只有流式请求占每账号 3 个会话槽，非流式不占；
+ * 否则转述本身就会把主请求的槽位挤掉。同一张图按 URL 哈希缓存。
+ */
+export async function bridgeImages(
+  credential: CodeArtsResolved,
+  rawJson: string,
+  bridgeModel: string,
+  signal?: AbortSignal,
+): Promise<ImageBridgeResult> {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(rawJson) as Record<string, unknown>
+  } catch {
+    return { ok: false, message: '图片转述失败：请求体不是合法 JSON' }
+  }
+  const urls = imageUrlsOf(parsed)
+  if (urls.length === 0) return { ok: true, body: rawJson, images: 0 }
+
+  const captions = new Map<string, string>()
+  for (const url of urls) {
+    if (captions.has(url)) continue
+    try {
+      captions.set(url, await captionImage(credential, bridgeModel, url, signal))
+    } catch (error: unknown) {
+      return {
+        ok: false,
+        message: `图片转述失败：${error instanceof Error ? error.message : String(error)}。可改用原生视觉模型，或关闭图片转述。`,
+      }
+    }
+  }
+
+  const messages = Array.isArray(parsed.messages) ? parsed.messages : []
+  for (const raw of messages) {
+    if (raw === null || typeof raw !== 'object') continue
+    const message = raw as { content?: unknown }
+    if (!Array.isArray(message.content)) continue
+    message.content = message.content.map(part => {
+      if (part === null || typeof part !== 'object') return part
+      const typed = part as { type?: unknown; image_url?: unknown }
+      if (typed.type !== 'image_url') return part
+      const source = typed.image_url
+      const url = typeof source === 'string'
+        ? source
+        : source !== null && typeof source === 'object' && typeof (source as { url?: unknown }).url === 'string'
+          ? (source as { url: string }).url
+          : ''
+      const caption = captions.get(url)
+      if (caption === undefined) return part
+      return { type: 'text', text: `[图片内容] ${caption}` }
+    })
+  }
+  return { ok: true, body: JSON.stringify(parsed), images: urls.length }
 }
 
 /** 登录身份（上游对同一账号恒定，可用来当账号的自然键）。 */

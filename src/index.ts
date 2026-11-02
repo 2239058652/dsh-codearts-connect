@@ -27,14 +27,14 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { CodeArtsAccountStore, codeartsAccountsPath } from './auth.ts'
 import { CodeArtsAccountPool } from './account-pool.ts'
-import { CodeArtsCatalog, filterEnabledModels, isBenefitModel } from './catalog.ts'
+import { CodeArtsCatalog, filterEnabledModels, isBenefitModel, setImageBridgeEnabled } from './catalog.ts'
 import { refreshCatalog } from './discovery.ts'
 import { CodeArtsUsageTracker, codeartsUsagePath } from './usage.ts'
 import { CodeArtsQueueGate } from './queue.ts'
 import { CodeArtsCreditCache } from './credits.ts'
 import { createCodeArtsAdapter, CODEARTS_PROVIDER } from './adapter.ts'
 import { probePiAiCompat } from './pi-ai-compat.ts'
-import { createCodeArtsShim, recentRequestShapes } from './shim.ts'
+import { createCodeArtsShim, recentRequestShapes, type CodeArtsAccountUse } from './shim.ts'
 import { registerCodeArtsStatusRoute, summarizeClaims } from './web-status.ts'
 import type { CodeArtsAccountCredits, CodeArtsClaimAccountResult, CodeArtsDockFlags } from './web-status.ts'
 import { installSettingsSectionCompat, resolveSettingsNamespaceCompat } from './settings-compat.ts'
@@ -79,7 +79,7 @@ export {
   type UsageSnapshot,
   type UsageTotals,
 } from './usage.ts'
-import { claimDailyWelfare } from './upstream.ts'
+import { claimDailyWelfare, DEFAULT_IMAGE_BRIDGE_MODEL } from './upstream.ts'
 export { discoverModels, refreshCatalog, type DiscoveryOutcome } from './discovery.ts'
 export {
   SNAP_HOST,
@@ -112,9 +112,27 @@ export interface Config {
   /**
    * 手动指定优先使用的账号 id。空/未设置 = 自动轮转。
    *
-   * 只是「首选」：指定账号不可用时仍会换号，避免一条消息因为号忙而直接失败。
+   * 指定后默认是**固定账号**：账号忙/冷却/不可用时不会偷偷换号去扣另一个号；
+   * 要把「忙时允许换号」打开才会回退。自动轮转模式仍按会话粘性 + 回退。
    */
   preferredAccountId?: string
+  /**
+   * 每账号本地并发上限。默认 3，与上游的 3 个流式会话对齐；
+   * 设为 1 可以强制串行。设置改动会立即作用到账号池。
+   */
+  maxConcurrentPerAccount?: number
+  /**
+   * 手动指定账号后，账号忙/冷却时是否允许自动换到其它账号。默认 false（固定）。
+   * 自动轮转模式不受此开关影响。
+   */
+  allowAccountFallback?: boolean
+  /**
+   * 图片转述：纯文本模型收到图片时，先用视觉模型转述成文字再发送。
+   * 打开后这些模型会临时声明可收图（标记为 imageBridge），DSH 才允许贴图。
+   */
+  imageBridgeEnabled?: boolean
+  /** 图片转述使用的视觉模型，缺省 Qwen3-VL-235B。 */
+  imageBridgeModel?: string
 }
 
 interface VolatileValue<T> {
@@ -140,6 +158,10 @@ export const Config: z<Config> = z.object({
   showCreditDock: z.boolean().default(true).description('Show the remaining-credits line under the chat input box').volatile(),
   showQueueDock: z.boolean().default(true).description('Show the upstream queue position under the chat input box').volatile(),
   preferredAccountId: z.string().default('').description('Account id to prefer for new requests (empty means automatic rotation)').volatile(),
+  maxConcurrentPerAccount: z.number().default(3).description('Local in-flight request limit per account (default 3)').volatile(),
+  allowAccountFallback: z.boolean().default(false).description('Allow switching away from the preferred account when it is busy or cooling down').volatile(),
+  imageBridgeEnabled: z.boolean().default(false).description('Caption images with a vision model before sending them to text-only models').volatile(),
+  imageBridgeModel: z.string().default('Qwen3-VL-235B').description('Vision model used to caption images').volatile(),
 }) as unknown as z<Config>
 
 function settingsCompatNamespace(ctx: Context): SettingsNamespace {
@@ -148,10 +170,14 @@ function settingsCompatNamespace(ctx: Context): SettingsNamespace {
 
 export function apply(ctx: Context, rawConfig: Config): void {
   const config = unwrapConfig(rawConfig)
+  // 目录在第一次读取时就要知道转述开关，否则卡片与适配器仍按纯文本渲染。
+  setImageBridgeEnabled(config.imageBridgeEnabled === true)
   const accountsPath = codeartsAccountsPath()
   // 多账号：池与账号文档分离——文档管凭证，池管「谁现在能接活」。
   const store = new CodeArtsAccountStore(accountsPath)
-  const pool = new CodeArtsAccountPool([])
+  const pool = new CodeArtsAccountPool([], {
+    maxConcurrent: config.maxConcurrentPerAccount ?? 3,
+  })
   const catalog = new CodeArtsCatalog()
   // 用量账本：记本机经插件发出的请求（账号总额度见 credits.ts，这里只记本机）。
   const usage = new CodeArtsUsageTracker({ path: codeartsUsagePath() })
@@ -234,6 +260,30 @@ export function apply(ctx: Context, rawConfig: Config): void {
     await settings.update(settingsCompatNamespace(ctx), { preferredAccountId: id })
     return true
   }
+  const allowAccountFallback = (): boolean => current().allowAccountFallback === true
+  const imageBridge = (): { enabled: boolean; model: string } => ({
+    enabled: current().imageBridgeEnabled === true,
+    model: current().imageBridgeModel?.trim() || DEFAULT_IMAGE_BRIDGE_MODEL,
+  })
+  const setImageBridge = async (patch: { enabled?: boolean; model?: string }): Promise<boolean> => {
+    const settings = ctx.get('settings')
+    if (settings === undefined) return false
+    await settings.update(settingsCompatNamespace(ctx), {
+      ...patch.enabled === undefined ? {} : { imageBridgeEnabled: patch.enabled },
+      ...patch.model === undefined ? {} : { imageBridgeModel: patch.model },
+    })
+    // settings.update 不会 guaranteed 触发 onChange（宿主版本之间不一致），这里
+    // 显式同步目录能力位，否则开关打开了、模型选择器还是按纯文本渲染，图贴不进去。
+    if (patch.enabled !== undefined) {
+      setImageBridgeEnabled(patch.enabled)
+      invalidateAdapter?.()
+    }
+    return true
+  }
+  /** 最近一次成功请求实际用的账号；状态接口搭车下发给积分弹层。 */
+  let lastAccountUse: CodeArtsAccountUse | undefined
+  /** 适配器只在 shim ready 后创建；转述开关热切换时用它让模型能力表重新生成。 */
+  let invalidateAdapter: (() => void) | undefined
 
   // Same-origin status/token routes backing the Plugin-configuration card.
   // 卡片另外读账号池的槽位占用与用量账本：这两个都是本机事实，不涉及令牌。
@@ -260,6 +310,9 @@ export function apply(ctx: Context, rawConfig: Config): void {
     setDock,
     preferredAccount,
     setPreferredAccount,
+    lastAccount: () => lastAccountUse,
+    imageBridge,
+    setImageBridge,
     claim: async (accountId?: string) => {
       const ids = accountId === undefined ? await store.ids() : [accountId]
       if (ids.length === 0) {
@@ -333,7 +386,11 @@ export function apply(ctx: Context, rawConfig: Config): void {
       current = () => unwrapConfig(source())
     },
     onChange() {
-      // authFile had no analogue here; nothing else to react to for MVP.
+      // 并发上限是热更的：改设置不用重启，账号池立即按新值收放槽位。
+      pool.setMaxConcurrent(current().maxConcurrentPerAccount ?? 3)
+      // 图片转述开关会改模型能力（纯文本 ↔ 可收图），目录与适配器都要重新生成。
+      setImageBridgeEnabled(current().imageBridgeEnabled === true)
+      invalidateAdapter?.()
     },
   })
 
@@ -389,7 +446,20 @@ export function apply(ctx: Context, rawConfig: Config): void {
   })
 
   // Build the loopback shim first; the adapter reads its origin at construction.
-  const shim = createCodeArtsShim({ store, catalog, pool, usage, queue, preferredAccount, logger: ctx.logger })
+  const shim = createCodeArtsShim({
+    store,
+    catalog,
+    pool,
+    usage,
+    queue,
+    preferredAccount,
+    allowAccountFallback,
+    onAccountUsed: info => {
+      lastAccountUse = info
+    },
+    imageBridgeModel: () => current().imageBridgeModel?.trim() || DEFAULT_IMAGE_BRIDGE_MODEL,
+    logger: ctx.logger,
+  })
 
   // 账本懒加载：读盘失败/文件不存在都不影响插件启动。
   void usage.load().catch(() => {})
@@ -408,6 +478,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
         enabledModels,
         resolveAttachments: () => ctx.get('attachments'),
       })
+      invalidateAdapter = codearts.invalidate
 
       let releaseAdapter: (() => void) | undefined
       let releaseDirectory: (() => void) | undefined

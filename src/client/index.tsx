@@ -46,10 +46,12 @@ export function apply(ctx: ClientContext): void {
       locale: namespace,
     }, () => <CodeArtsPluginCard t={t} />))
 
-    // 对话底部的积分条（conversation.composer.dock）—— 用户原始诉求就是
-    // 「对话底部要显示积分」。只在 codearts provider 下显示一行，别的不抢行。
-    ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
-      name: 'conversation.composer.dock',
+    // 积分图标放进 composer 工具行（`conversation.input.right`）。
+    // 这个 list 槽位由宿主渲染在 `div.trailing` 的 standardControls 里，紧挨着
+    // 模型选择器之前；`input.left` 在工具组末尾、离权限选择器只有 8px，点「完全权限」
+    // 容易误触积分弹层（dsh-connect-workbuddy 踩过同样的坑）。
+    ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+      name: 'conversation.input.right',
       id: 'codearts-credits',
       order: 20,
       locale: namespace,

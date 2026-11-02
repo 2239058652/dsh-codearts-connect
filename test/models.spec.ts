@@ -16,6 +16,7 @@ import {
   mergeModelLists,
   modelDisplayName,
   setDiscoveredBenefitModels,
+  setImageBridgeEnabled,
   stripModelSuffixes,
   type CodeArtsModelInfo,
 } from '../src/catalog.ts'
@@ -470,6 +471,7 @@ describe('refreshCatalog 的显示名', () => {
 describe('图片能力黑名单', () => {
   afterEach(() => {
     clearImageBlocked()
+    setImageBridgeEnabled(false)
   })
 
   // 上游清单给 GLM-5.2 标 supports_images: true，聊天端点却回「not multimodal」。
@@ -506,5 +508,20 @@ describe('图片能力黑名单', () => {
     expect(isNotMultimodal('InferHub.001001020.406', 'The request model is not multimodal')).toBe(true)
     expect(isNotMultimodal('InferHub.001001046.406', 'The multimodal content of the multimodal request is incorrect.')).toBe(true)
     expect(isNotMultimodal('InferHub.001001005.400', 'The request param is invalid')).toBe(false)
+  })
+
+  it('转述开关打开时，被挡住图片的模型改挂 imageBridge', () => {
+    const catalog = new CodeArtsCatalog()
+    // 种子表已经把这类模型标成 false；转述开关必须不依赖上游的 supportsImages。
+    catalog.set([model('GLM-5.2', { supportsImages: false })])
+    expect(catalog.current()[0]?.supportsImages).toBe(false)
+
+    setImageBridgeEnabled(true)
+    expect(catalog.current()[0]?.supportsImages).toBe(true)
+    expect(catalog.current()[0]?.imageBridge).toBe(true)
+
+    setImageBridgeEnabled(false)
+    expect(catalog.current()[0]?.supportsImages).toBe(false)
+    expect(catalog.current()[0]?.imageBridge).toBeUndefined()
   })
 })

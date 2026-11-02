@@ -12,8 +12,8 @@
  * @module dsh-codearts-connect/account-pool
  */
 
-/** 单账号默认并发上限。上游给 3 个会话，留 1 个给 CodeArts 网页端。 */
-export const DEFAULT_MAX_CONCURRENT = 2
+/** 单账号默认并发上限。上游给 3 个流式会话，本地也放到 3；0.2 版留 1 个给网页端太保守。 */
+export const DEFAULT_MAX_CONCURRENT = 3
 
 /**
  * 撞到上游并发上限后，多久内优先不选这个账号。
@@ -51,13 +51,20 @@ export interface PoolOptions {
 
 export class CodeArtsAccountPool {
   private readonly accounts = new Map<string, AccountRuntime>()
-  private readonly maxConcurrent: number
+  private maxConcurrent: number
   private readonly now: () => number
 
   constructor(ids: readonly string[], options: PoolOptions = {}) {
     this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT
     this.now = options.now ?? (() => Date.now())
     this.sync(ids)
+  }
+
+  /** 设置改动后同步每账号的本地并发上限（已在跑的请求不会被踢掉）。 */
+  setMaxConcurrent(value: number): void {
+    const next = Math.max(1, Math.trunc(value))
+    this.maxConcurrent = next
+    for (const account of this.accounts.values()) account.maxConcurrent = next
   }
 
   /** 让池与账号文档对齐：新增的进来，删掉的出去。已有账号的运行时状态保留。 */
@@ -125,6 +132,21 @@ export class CodeArtsAccountPool {
     const now = this.now()
     const notCapped = candidates.filter(a => now >= a.cappedUntil)
     return (notCapped.length > 0 ? notCapped[0] : candidates[0]).id
+  }
+
+  /**
+   * 只选指定的那一个账号，不做任何轮转回退。
+   *
+   * 手动指定账号后的固定模式用它：账号被禁用、在冷却或本地槽位满时返回
+   * undefined，由调用方给出「指定账号忙」的明确错误，绝不偷偷换号去扣另一个号。
+   */
+  pickOnly(id: string): string | undefined {
+    const account = this.accounts.get(id)
+    if (account === undefined) return undefined
+    const now = this.now()
+    if (account.disabled || now < account.coolUntil) return undefined
+    if (account.activeConcurrent >= account.maxConcurrent) return undefined
+    return account.id
   }
 
   /** 占一个本地槽位。占用失败（已满/不存在）返回 false。 */

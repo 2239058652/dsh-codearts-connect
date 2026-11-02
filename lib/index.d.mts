@@ -9,15 +9,22 @@ import { EventEmitter } from "events";
 import { Blob as Blob$1 } from "buffer";
 import { ConnectionOptions, TLSSocket } from "tls";
 import { IpcNetConnectOpts, Socket, TcpNetConnectOpts } from "net";
+import { URL as URL$2, URLSearchParams as URLSearchParams$2 } from "node:url";
+import { Duplex as Duplex$1, Readable as Readable$1, Writable as Writable$1 } from "node:stream";
+import { EventEmitter as EventEmitter$1 } from "node:events";
+import { Blob as Blob$2, File as File$1 } from "node:buffer";
+import { SessionOptions } from "node:http2";
+import { ConnectionOptions as ConnectionOptions$1, TLSSocket as TLSSocket$1 } from "node:tls";
+import { IpcNetConnectOpts as IpcNetConnectOpts$1, Socket as Socket$1, TcpNetConnectOpts as TcpNetConnectOpts$1 } from "node:net";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
 //#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/header.d.ts
 /**
  * The header type declaration of `undici`.
  */
-type IncomingHttpHeaders = Record<string, string | string[] | undefined>;
+type IncomingHttpHeaders$1 = Record<string, string | string[] | undefined>;
 //#endregion
 //#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/readable.d.ts
-declare class BodyReadable extends Readable {
+declare class BodyReadable$1 extends Readable {
   constructor(resume?: (this: Readable, size: number) => void | null, abort?: () => void | null, contentType?: string);
   /** Consumes and returns the body as a string
    *  https://fetch.spec.whatwg.org/#dom-body-text
@@ -78,7 +85,7 @@ interface FilePropertyBag extends BlobPropertyBag {
    */
   lastModified?: number;
 }
-declare class File$1 extends Blob$1 {
+declare class File$2 extends Blob$1 {
   /**
    * Creates a new File instance.
    *
@@ -99,17 +106,774 @@ declare class File$1 extends Blob$1 {
 }
 //#endregion
 //#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/fetch.d.ts
-type BodyInit = ArrayBuffer | AsyncIterable<Uint8Array> | Blob$1 | FormData$1 | Iterable<Uint8Array> | NodeJS.ArrayBufferView | URLSearchParams$1 | null | string;
+type BodyInit$1 = ArrayBuffer | AsyncIterable<Uint8Array> | Blob$1 | FormData$2 | Iterable<Uint8Array> | NodeJS.ArrayBufferView | URLSearchParams$1 | null | string;
+interface SpecIterator$1<T, TReturn = any, TNext = undefined> {
+  next(...args: [] | [TNext]): IteratorResult<T, TReturn>;
+}
+interface SpecIterableIterator$1<T> extends SpecIterator$1<T> {
+  [Symbol.iterator](): SpecIterableIterator$1<T>;
+}
+interface SpecIterable$1<T> {
+  [Symbol.iterator](): SpecIterator$1<T>;
+}
+type HeadersInit$2 = string[][] | Record<string, string | ReadonlyArray<string>> | Headers$2;
+declare class Headers$2 implements SpecIterable$1<[string, string]> {
+  constructor(init?: HeadersInit$2);
+  readonly append: (name: string, value: string) => void;
+  readonly delete: (name: string) => void;
+  readonly get: (name: string) => string | null;
+  readonly has: (name: string) => boolean;
+  readonly set: (name: string, value: string) => void;
+  readonly getSetCookie: () => string[];
+  readonly forEach: (callbackfn: (value: string, key: string, iterable: Headers$2) => void, thisArg?: unknown) => void;
+  readonly keys: () => SpecIterableIterator$1<string>;
+  readonly values: () => SpecIterableIterator$1<string>;
+  readonly entries: () => SpecIterableIterator$1<[string, string]>;
+  readonly [Symbol.iterator]: () => SpecIterableIterator$1<[string, string]>;
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/formdata.d.ts
+/**
+ * A `string` or `File` that represents a single value from a set of `FormData` key-value pairs.
+ */
+declare type FormDataEntryValue$1 = string | File$2;
+/**
+ * Provides a way to easily construct a set of key/value pairs representing form fields and their values, which can then be easily sent using fetch().
+ */
+declare class FormData$2 {
+  /**
+   * Appends a new value onto an existing key inside a FormData object,
+   * or adds the key if it does not already exist.
+   *
+   * The difference between `set()` and `append()` is that if the specified key already exists, `set()` will overwrite all existing values with the new one, whereas `append()` will append the new value onto the end of the existing set of values.
+   *
+   * @param name The name of the field whose data is contained in `value`.
+   * @param value The field's value. This can be [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob)
+    or [`File`](https://developer.mozilla.org/en-US/docs/Web/API/File). If none of these are specified the value is converted to a string.
+   * @param fileName The filename reported to the server, when a Blob or File is passed as the second parameter. The default filename for Blob objects is "blob". The default filename for File objects is the file's filename.
+   */
+  append(name: string, value: unknown, fileName?: string): void;
+  /**
+   * Set a new value for an existing key inside FormData,
+   * or add the new field if it does not already exist.
+   *
+   * @param name The name of the field whose data is contained in `value`.
+   * @param value The field's value. This can be [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob)
+    or [`File`](https://developer.mozilla.org/en-US/docs/Web/API/File). If none of these are specified the value is converted to a string.
+   * @param fileName The filename reported to the server, when a Blob or File is passed as the second parameter. The default filename for Blob objects is "blob". The default filename for File objects is the file's filename.
+   *
+   */
+  set(name: string, value: unknown, fileName?: string): void;
+  /**
+   * Returns the first value associated with a given key from within a `FormData` object.
+   * If you expect multiple values and want all of them, use the `getAll()` method instead.
+   *
+   * @param {string} name A name of the value you want to retrieve.
+   *
+   * @returns A `FormDataEntryValue` containing the value. If the key doesn't exist, the method returns null.
+   */
+  get(name: string): FormDataEntryValue$1 | null;
+  /**
+   * Returns all the values associated with a given key from within a `FormData` object.
+   *
+   * @param {string} name A name of the value you want to retrieve.
+   *
+   * @returns An array of `FormDataEntryValue` whose key matches the value passed in the `name` parameter. If the key doesn't exist, the method returns an empty list.
+   */
+  getAll(name: string): FormDataEntryValue$1[];
+  /**
+   * Returns a boolean stating whether a `FormData` object contains a certain key.
+   *
+   * @param name A string representing the name of the key you want to test for.
+   *
+   * @return A boolean value.
+   */
+  has(name: string): boolean;
+  /**
+   * Deletes a key and its value(s) from a `FormData` object.
+   *
+   * @param name The name of the key you want to delete.
+   */
+  delete(name: string): void;
+  /**
+   * Executes given callback function for each field of the FormData instance
+   */
+  forEach: (callbackfn: (value: FormDataEntryValue$1, key: string, iterable: FormData$2) => void, thisArg?: unknown) => void;
+  /**
+   * Returns an [`iterator`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols) allowing to go through all keys contained in this `FormData` object.
+   * Each key is a `string`.
+   */
+  keys: () => SpecIterableIterator$1<string>;
+  /**
+   * Returns an [`iterator`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols) allowing to go through all values contained in this object `FormData` object.
+   * Each value is a [`FormDataValue`](https://developer.mozilla.org/en-US/docs/Web/API/FormDataEntryValue).
+   */
+  values: () => SpecIterableIterator$1<FormDataEntryValue$1>;
+  /**
+   * Returns an [`iterator`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols) allowing to go through the `FormData` key/value pairs.
+   * The key of each pair is a string; the value is a [`FormDataValue`](https://developer.mozilla.org/en-US/docs/Web/API/FormDataEntryValue).
+   */
+  entries: () => SpecIterableIterator$1<[string, FormDataEntryValue$1]>;
+  /**
+   * An alias for FormData#entries()
+   */
+  [Symbol.iterator]: () => SpecIterableIterator$1<[string, FormDataEntryValue$1]>;
+  readonly [Symbol.toStringTag]: string;
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/connector.d.ts
+declare function buildConnector$1(options?: buildConnector$1.BuildOptions): buildConnector$1.connector;
+declare namespace buildConnector$1 {
+  export type BuildOptions = (ConnectionOptions | TcpNetConnectOpts | IpcNetConnectOpts) & {
+    allowH2?: boolean;
+    maxCachedSessions?: number | null;
+    socketPath?: string | null;
+    timeout?: number | null;
+    port?: number;
+    keepAlive?: boolean | null;
+    keepAliveInitialDelay?: number | null;
+  };
+  export interface Options {
+    hostname: string;
+    host?: string;
+    protocol: string;
+    port: string;
+    servername?: string;
+    localAddress?: string | null;
+    httpSocket?: Socket;
+  }
+  export type Callback = (...args: CallbackArgs) => void;
+  type CallbackArgs = [null, Socket | TLSSocket] | [Error, null];
+  export interface connector {
+    (options: buildConnector$1.Options, callback: buildConnector$1.Callback): void;
+  }
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/client.d.ts
+type ClientConnectOptions$1 = Omit<Dispatcher$1.ConnectOptions, "origin">;
+/**
+ * A basic HTTP/1.1 client, mapped on top a single TCP/TLS connection. Pipelining is disabled by default.
+ */
+declare class Client$1 extends Dispatcher$1 {
+  constructor(url: string | URL$1, options?: Client$1.Options);
+  /** Property to get and set the pipelining factor. */
+  pipelining: number;
+  /** `true` after `client.close()` has been called. */
+  closed: boolean;
+  /** `true` after `client.destroyed()` has been called or `client.close()` has been called and the client shutdown has completed. */
+  destroyed: boolean;
+  // Override dispatcher APIs.
+  override connect(options: ClientConnectOptions$1): Promise<Dispatcher$1.ConnectData>;
+  override connect(options: ClientConnectOptions$1, callback: (err: Error | null, data: Dispatcher$1.ConnectData) => void): void;
+}
+declare namespace Client$1 {
+  export interface OptionsInterceptors {
+    Client: readonly Dispatcher$1.DispatchInterceptor[];
+  }
+  export interface Options {
+    /** TODO */
+    interceptors?: OptionsInterceptors;
+    /** The maximum length of request headers in bytes. Default: Node.js' `--max-http-header-size` or `16384` (16KiB). */
+    maxHeaderSize?: number;
+    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers (Node 14 and above only). Default: `300e3` milliseconds (300s). */
+    headersTimeout?: number;
+    /** @deprecated unsupported socketTimeout, use headersTimeout & bodyTimeout instead */
+    socketTimeout?: never;
+    /** @deprecated unsupported requestTimeout, use headersTimeout & bodyTimeout instead */
+    requestTimeout?: never;
+    /** TODO */
+    connectTimeout?: number;
+    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use `0` to disable it entirely. Default: `300e3` milliseconds (300s). */
+    bodyTimeout?: number;
+    /** @deprecated unsupported idleTimeout, use keepAliveTimeout instead */
+    idleTimeout?: never;
+    /** @deprecated unsupported keepAlive, use pipelining=0 instead */
+    keepAlive?: never;
+    /** the timeout, in milliseconds, after which a socket without active requests will time out. Monitors time between activity on a connected socket. This value may be overridden by *keep-alive* hints from the server. Default: `4e3` milliseconds (4s). */
+    keepAliveTimeout?: number;
+    /** @deprecated unsupported maxKeepAliveTimeout, use keepAliveMaxTimeout instead */
+    maxKeepAliveTimeout?: never;
+    /** the maximum allowed `idleTimeout`, in milliseconds, when overridden by *keep-alive* hints from the server. Default: `600e3` milliseconds (10min). */
+    keepAliveMaxTimeout?: number;
+    /** A number of milliseconds subtracted from server *keep-alive* hints when overriding `idleTimeout` to account for timing inaccuracies caused by e.g. transport latency. Default: `1e3` milliseconds (1s). */
+    keepAliveTimeoutThreshold?: number;
+    /** TODO */
+    socketPath?: string;
+    /** The amount of concurrent requests to be sent over the single TCP/TLS connection according to [RFC7230](https://tools.ietf.org/html/rfc7230#section-6.3.2). Default: `1`. */
+    pipelining?: number;
+    /** @deprecated use the connect option instead */
+    tls?: never;
+    /** If `true`, an error is thrown when the request content-length header doesn't match the length of the request body. Default: `true`. */
+    strictContentLength?: boolean;
+    /** TODO */
+    maxCachedSessions?: number;
+    /** TODO */
+    maxRedirections?: number;
+    /** TODO */
+    connect?: buildConnector$1.BuildOptions | buildConnector$1.connector;
+    /** TODO */
+    maxRequestsPerClient?: number;
+    /** TODO */
+    localAddress?: string;
+    /** Max response body size in bytes, -1 is disabled */
+    maxResponseSize?: number;
+    /** Enables a family autodetection algorithm that loosely implements section 5 of RFC 8305. */
+    autoSelectFamily?: boolean;
+    /** The amount of time in milliseconds to wait for a connection attempt to finish before trying the next address when using the `autoSelectFamily` option. */
+    autoSelectFamilyAttemptTimeout?: number;
+    /**
+     * @description Enables support for H2 if the server has assigned bigger priority to it through ALPN negotiation.
+     * @default false
+     */
+    allowH2?: boolean;
+    /**
+     * @description Dictates the maximum number of concurrent streams for a single H2 session. It can be overridden by a SETTINGS remote frame.
+     * @default 100
+     */
+    maxConcurrentStreams?: number;
+  }
+  export interface SocketInfo {
+    localAddress?: string;
+    localPort?: number;
+    remoteAddress?: string;
+    remotePort?: number;
+    remoteFamily?: string;
+    timeout?: number;
+    bytesWritten?: number;
+    bytesRead?: number;
+  }
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/errors.d.ts
+declare namespace Errors$1 {
+  export class UndiciError extends Error {
+    name: string;
+    code: string;
+  }
+  /** Connect timeout error. */
+  export class ConnectTimeoutError extends UndiciError {
+    name: 'ConnectTimeoutError';
+    code: 'UND_ERR_CONNECT_TIMEOUT';
+  }
+  /** A header exceeds the `headersTimeout` option. */
+  export class HeadersTimeoutError extends UndiciError {
+    name: 'HeadersTimeoutError';
+    code: 'UND_ERR_HEADERS_TIMEOUT';
+  }
+  /** Headers overflow error. */
+  export class HeadersOverflowError extends UndiciError {
+    name: 'HeadersOverflowError';
+    code: 'UND_ERR_HEADERS_OVERFLOW';
+  }
+  /** A body exceeds the `bodyTimeout` option. */
+  export class BodyTimeoutError extends UndiciError {
+    name: 'BodyTimeoutError';
+    code: 'UND_ERR_BODY_TIMEOUT';
+  }
+  export class ResponseStatusCodeError extends UndiciError {
+    constructor(message?: string, statusCode?: number, headers?: IncomingHttpHeaders$1 | string[] | null, body?: null | Record<string, any> | string);
+    name: 'ResponseStatusCodeError';
+    code: 'UND_ERR_RESPONSE_STATUS_CODE';
+    body: null | Record<string, any> | string;
+    status: number;
+    statusCode: number;
+    headers: IncomingHttpHeaders$1 | string[] | null;
+  }
+  /** Passed an invalid argument. */
+  export class InvalidArgumentError extends UndiciError {
+    name: 'InvalidArgumentError';
+    code: 'UND_ERR_INVALID_ARG';
+  }
+  /** Returned an invalid value. */
+  export class InvalidReturnValueError extends UndiciError {
+    name: 'InvalidReturnValueError';
+    code: 'UND_ERR_INVALID_RETURN_VALUE';
+  }
+  /** The request has been aborted by the user. */
+  export class RequestAbortedError extends UndiciError {
+    name: 'AbortError';
+    code: 'UND_ERR_ABORTED';
+  }
+  /** Expected error with reason. */
+  export class InformationalError extends UndiciError {
+    name: 'InformationalError';
+    code: 'UND_ERR_INFO';
+  }
+  /** Request body length does not match content-length header. */
+  export class RequestContentLengthMismatchError extends UndiciError {
+    name: 'RequestContentLengthMismatchError';
+    code: 'UND_ERR_REQ_CONTENT_LENGTH_MISMATCH';
+  }
+  /** Response body length does not match content-length header. */
+  export class ResponseContentLengthMismatchError extends UndiciError {
+    name: 'ResponseContentLengthMismatchError';
+    code: 'UND_ERR_RES_CONTENT_LENGTH_MISMATCH';
+  }
+  /** Trying to use a destroyed client. */
+  export class ClientDestroyedError extends UndiciError {
+    name: 'ClientDestroyedError';
+    code: 'UND_ERR_DESTROYED';
+  }
+  /** Trying to use a closed client. */
+  export class ClientClosedError extends UndiciError {
+    name: 'ClientClosedError';
+    code: 'UND_ERR_CLOSED';
+  }
+  /** There is an error with the socket. */
+  export class SocketError extends UndiciError {
+    name: 'SocketError';
+    code: 'UND_ERR_SOCKET';
+    socket: Client$1.SocketInfo | null;
+  }
+  /** Encountered unsupported functionality. */
+  export class NotSupportedError extends UndiciError {
+    name: 'NotSupportedError';
+    code: 'UND_ERR_NOT_SUPPORTED';
+  }
+  /** No upstream has been added to the BalancedPool. */
+  export class BalancedPoolMissingUpstreamError extends UndiciError {
+    name: 'MissingUpstreamError';
+    code: 'UND_ERR_BPL_MISSING_UPSTREAM';
+  }
+  export class HTTPParserError extends UndiciError {
+    name: 'HTTPParserError';
+    code: string;
+  }
+  /** The response exceed the length allowed. */
+  export class ResponseExceededMaxSizeError extends UndiciError {
+    name: 'ResponseExceededMaxSizeError';
+    code: 'UND_ERR_RES_EXCEEDED_MAX_SIZE';
+  }
+  export class RequestRetryError extends UndiciError {
+    constructor(message: string, statusCode: number, headers?: IncomingHttpHeaders$1 | string[] | null, body?: null | Record<string, any> | string);
+    name: 'RequestRetryError';
+    code: 'UND_ERR_REQ_RETRY';
+    statusCode: number;
+    data: {
+      count: number;
+    };
+    headers: Record<string, string | string[]>;
+  }
+  export class SecureProxyConnectionError extends UndiciError {
+    name: 'SecureProxyConnectionError';
+    code: 'UND_ERR_PRX_TLS';
+  }
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/dispatcher.d.ts
+type AbortSignal$1 = unknown;
+/** Dispatcher is the core API used to dispatch requests. */
+declare class Dispatcher$1 extends EventEmitter {
+  /** Dispatches a request. This API is expected to evolve through semver-major versions and is less stable than the preceding higher level APIs. It is primarily intended for library developers who implement higher level APIs on top of this. */
+  dispatch(options: Dispatcher$1.DispatchOptions, handler: Dispatcher$1.DispatchHandlers): boolean;
+  /** Starts two-way communications with the requested resource. */
+  connect(options: Dispatcher$1.ConnectOptions): Promise<Dispatcher$1.ConnectData>;
+  connect(options: Dispatcher$1.ConnectOptions, callback: (err: Error | null, data: Dispatcher$1.ConnectData) => void): void;
+  /** Compose a chain of dispatchers */
+  compose(dispatchers: Dispatcher$1.DispatcherComposeInterceptor[]): Dispatcher$1.ComposedDispatcher;
+  compose(...dispatchers: Dispatcher$1.DispatcherComposeInterceptor[]): Dispatcher$1.ComposedDispatcher;
+  /** Performs an HTTP request. */
+  request(options: Dispatcher$1.RequestOptions): Promise<Dispatcher$1.ResponseData>;
+  request(options: Dispatcher$1.RequestOptions, callback: (err: Error | null, data: Dispatcher$1.ResponseData) => void): void;
+  /** For easy use with `stream.pipeline`. */
+  pipeline(options: Dispatcher$1.PipelineOptions, handler: Dispatcher$1.PipelineHandler): Duplex;
+  /** A faster version of `Dispatcher.request`. */
+  stream(options: Dispatcher$1.RequestOptions, factory: Dispatcher$1.StreamFactory): Promise<Dispatcher$1.StreamData>;
+  stream(options: Dispatcher$1.RequestOptions, factory: Dispatcher$1.StreamFactory, callback: (err: Error | null, data: Dispatcher$1.StreamData) => void): void;
+  /** Upgrade to a different protocol. */
+  upgrade(options: Dispatcher$1.UpgradeOptions): Promise<Dispatcher$1.UpgradeData>;
+  upgrade(options: Dispatcher$1.UpgradeOptions, callback: (err: Error | null, data: Dispatcher$1.UpgradeData) => void): void;
+  /** Closes the client and gracefully waits for enqueued requests to complete before invoking the callback (or returning a promise if no callback is provided). */
+  close(): Promise<void>;
+  close(callback: () => void): void;
+  /** Destroy the client abruptly with the given err. All the pending and running requests will be asynchronously aborted and error. Waits until socket is closed before invoking the callback (or returning a promise if no callback is provided). Since this operation is asynchronously dispatched there might still be some progress on dispatched requests. */
+  destroy(): Promise<void>;
+  destroy(err: Error | null): Promise<void>;
+  destroy(callback: () => void): void;
+  destroy(err: Error | null, callback: () => void): void;
+  on(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  on(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  on(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  on(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  once(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  once(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  once(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  once(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  off(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  off(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  off(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  off(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  addListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  addListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  addListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  addListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  removeListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  removeListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  removeListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  removeListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  prependListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  prependListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  prependListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  prependListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  prependOnceListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher$1[]) => void): this;
+  prependOnceListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  prependOnceListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void): this;
+  prependOnceListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
+  listeners(eventName: 'connect'): ((origin: URL$1, targets: readonly Dispatcher$1[]) => void)[];
+  listeners(eventName: 'disconnect'): ((origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void)[];
+  listeners(eventName: 'connectionError'): ((origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void)[];
+  listeners(eventName: 'drain'): ((origin: URL$1) => void)[];
+  rawListeners(eventName: 'connect'): ((origin: URL$1, targets: readonly Dispatcher$1[]) => void)[];
+  rawListeners(eventName: 'disconnect'): ((origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void)[];
+  rawListeners(eventName: 'connectionError'): ((origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError) => void)[];
+  rawListeners(eventName: 'drain'): ((origin: URL$1) => void)[];
+  emit(eventName: 'connect', origin: URL$1, targets: readonly Dispatcher$1[]): boolean;
+  emit(eventName: 'disconnect', origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError): boolean;
+  emit(eventName: 'connectionError', origin: URL$1, targets: readonly Dispatcher$1[], error: Errors$1.UndiciError): boolean;
+  emit(eventName: 'drain', origin: URL$1): boolean;
+}
+declare namespace Dispatcher$1 {
+  export interface ComposedDispatcher extends Dispatcher$1 {}
+  export type DispatcherComposeInterceptor = (dispatch: Dispatcher$1['dispatch']) => Dispatcher$1['dispatch'];
+  export interface DispatchOptions {
+    origin?: string | URL$1;
+    path: string;
+    method: HttpMethod;
+    /** Default: `null` */
+    body?: string | Buffer | Uint8Array | Readable | null | FormData$2;
+    /** Default: `null` */
+    headers?: IncomingHttpHeaders$1 | string[] | Iterable<[string, string | string[] | undefined]> | null;
+    /** Query string params to be embedded in the request URL. Default: `null` */
+    query?: Record<string, any>;
+    /** Whether the requests can be safely retried or not. If `false` the request won't be sent until all preceding requests in the pipeline have completed. Default: `true` if `method` is `HEAD` or `GET`. */
+    idempotent?: boolean;
+    /** Whether the response is expected to take a long time and would end up blocking the pipeline. When this is set to `true` further pipelining will be avoided on the same connection until headers have been received. */
+    blocking?: boolean;
+    /** Upgrade the request. Should be used to specify the kind of upgrade i.e. `'Websocket'`. Default: `method === 'CONNECT' || null`. */
+    upgrade?: boolean | string | null;
+    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers. Defaults to 300 seconds. */
+    headersTimeout?: number | null;
+    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use 0 to disable it entirely. Defaults to 300 seconds. */
+    bodyTimeout?: number | null;
+    /** Whether the request should stablish a keep-alive or not. Default `false` */
+    reset?: boolean;
+    /** Whether Undici should throw an error upon receiving a 4xx or 5xx response from the server. Defaults to false */
+    throwOnError?: boolean;
+    /** For H2, it appends the expect: 100-continue header, and halts the request body until a 100-continue is received from the remote server*/
+    expectContinue?: boolean;
+  }
+  export interface ConnectOptions {
+    origin: string | URL$1;
+    path: string;
+    /** Default: `null` */
+    headers?: IncomingHttpHeaders$1 | string[] | null;
+    /** Default: `null` */
+    signal?: AbortSignal$1 | EventEmitter | null;
+    /** This argument parameter is passed through to `ConnectData` */
+    opaque?: unknown;
+    /** Default: 0 */
+    maxRedirections?: number;
+    /** Default: false */
+    redirectionLimitReached?: boolean;
+    /** Default: `null` */
+    responseHeader?: 'raw' | null;
+  }
+  export interface RequestOptions extends DispatchOptions {
+    /** Default: `null` */
+    opaque?: unknown;
+    /** Default: `null` */
+    signal?: AbortSignal$1 | EventEmitter | null;
+    /** Default: 0 */
+    maxRedirections?: number;
+    /** Default: false */
+    redirectionLimitReached?: boolean;
+    /** Default: `null` */
+    onInfo?: (info: {
+      statusCode: number;
+      headers: Record<string, string | string[]>;
+    }) => void;
+    /** Default: `null` */
+    responseHeader?: 'raw' | null;
+    /** Default: `64 KiB` */
+    highWaterMark?: number;
+  }
+  export interface PipelineOptions extends RequestOptions {
+    /** `true` if the `handler` will return an object stream. Default: `false` */
+    objectMode?: boolean;
+  }
+  export interface UpgradeOptions {
+    path: string;
+    /** Default: `'GET'` */
+    method?: string;
+    /** Default: `null` */
+    headers?: IncomingHttpHeaders$1 | string[] | null;
+    /** A string of comma separated protocols, in descending preference order. Default: `'Websocket'` */
+    protocol?: string;
+    /** Default: `null` */
+    signal?: AbortSignal$1 | EventEmitter | null;
+    /** Default: 0 */
+    maxRedirections?: number;
+    /** Default: false */
+    redirectionLimitReached?: boolean;
+    /** Default: `null` */
+    responseHeader?: 'raw' | null;
+  }
+  export interface ConnectData {
+    statusCode: number;
+    headers: IncomingHttpHeaders$1;
+    socket: Duplex;
+    opaque: unknown;
+  }
+  export interface ResponseData {
+    statusCode: number;
+    headers: IncomingHttpHeaders$1;
+    body: BodyReadable$1 & BodyMixin;
+    trailers: Record<string, string>;
+    opaque: unknown;
+    context: object;
+  }
+  export interface PipelineHandlerData {
+    statusCode: number;
+    headers: IncomingHttpHeaders$1;
+    opaque: unknown;
+    body: BodyReadable$1;
+    context: object;
+  }
+  export interface StreamData {
+    opaque: unknown;
+    trailers: Record<string, string>;
+  }
+  export interface UpgradeData {
+    headers: IncomingHttpHeaders$1;
+    socket: Duplex;
+    opaque: unknown;
+  }
+  export interface StreamFactoryData {
+    statusCode: number;
+    headers: IncomingHttpHeaders$1;
+    opaque: unknown;
+    context: object;
+  }
+  export type StreamFactory = (data: StreamFactoryData) => Writable;
+  export interface DispatchHandlers {
+    /** Invoked before request is dispatched on socket. May be invoked multiple times when a request is retried when the request at the head of the pipeline fails. */
+    onConnect?(abort: (err?: Error) => void): void;
+    /** Invoked when an error has occurred. */
+    onError?(err: Error): void;
+    /** Invoked when request is upgraded either due to a `Upgrade` header or `CONNECT` method. */
+    onUpgrade?(statusCode: number, headers: Buffer[] | string[] | null, socket: Duplex): void;
+    /** Invoked when response is received, before headers have been read. **/
+    onResponseStarted?(): void;
+    /** Invoked when statusCode and headers have been received. May be invoked multiple times due to 1xx informational headers. */
+    onHeaders?(statusCode: number, headers: Buffer[], resume: () => void, statusText: string): boolean;
+    /** Invoked when response payload data is received. */
+    onData?(chunk: Buffer): boolean;
+    /** Invoked when response payload and trailers have been received and the request has completed. */
+    onComplete?(trailers: string[] | null): void;
+    /** Invoked when a body chunk is sent to the server. May be invoked multiple times for chunked requests */
+    onBodySent?(chunkSize: number, totalBytesSent: number): void;
+  }
+  export type PipelineHandler = (data: PipelineHandlerData) => Readable;
+  export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE' | 'CONNECT' | 'OPTIONS' | 'TRACE' | 'PATCH';
+  /**
+   * @link https://fetch.spec.whatwg.org/#body-mixin
+   */
+  interface BodyMixin {
+    readonly body?: never;
+    readonly bodyUsed: boolean;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<Blob$1>;
+    bytes(): Promise<Uint8Array>;
+    formData(): Promise<never>;
+    json(): Promise<unknown>;
+    text(): Promise<string>;
+  }
+  export interface DispatchInterceptor {
+    (dispatch: Dispatcher$1['dispatch']): Dispatcher$1['dispatch'];
+  }
+}
+//#endregion
+//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/mock-interceptor.d.ts
+/** The scope associated with a mock dispatch. */
+declare class MockScope$1<TData extends object = object> {
+  constructor(mockDispatch: MockInterceptor$1.MockDispatch<TData>);
+  /** Delay a reply by a set amount of time in ms. */
+  delay(waitInMs: number): MockScope$1<TData>;
+  /** Persist the defined mock data for the associated reply. It will return the defined mock data indefinitely. */
+  persist(): MockScope$1<TData>;
+  /** Define a reply for a set amount of matching requests. */
+  times(repeatTimes: number): MockScope$1<TData>;
+}
+/** The interceptor for a Mock. */
+declare class MockInterceptor$1 {
+  constructor(options: MockInterceptor$1.Options, mockDispatches: MockInterceptor$1.MockDispatch[]);
+  /** Mock an undici request with the defined reply. */
+  reply<TData extends object = object>(replyOptionsCallback: MockInterceptor$1.MockReplyOptionsCallback<TData>): MockScope$1<TData>;
+  reply<TData extends object = object>(statusCode: number, data?: TData | Buffer | string | MockInterceptor$1.MockResponseDataHandler<TData>, responseOptions?: MockInterceptor$1.MockResponseOptions): MockScope$1<TData>;
+  /** Mock an undici request by throwing the defined reply error. */
+  replyWithError<TError extends Error = Error>(error: TError): MockScope$1;
+  /** Set default reply headers on the interceptor for subsequent mocked replies. */
+  defaultReplyHeaders(headers: IncomingHttpHeaders$1): MockInterceptor$1;
+  /** Set default reply trailers on the interceptor for subsequent mocked replies. */
+  defaultReplyTrailers(trailers: Record<string, string>): MockInterceptor$1;
+  /** Set automatically calculated content-length header on subsequent mocked replies. */
+  replyContentLength(): MockInterceptor$1;
+}
+declare namespace MockInterceptor$1 {
+  /** MockInterceptor options. */
+  export interface Options {
+    /** Path to intercept on. */
+    path: string | RegExp | ((path: string) => boolean);
+    /** Method to intercept on. Defaults to GET. */
+    method?: string | RegExp | ((method: string) => boolean);
+    /** Body to intercept on. */
+    body?: string | RegExp | ((body: string) => boolean);
+    /** Headers to intercept on. */
+    headers?: Record<string, string | RegExp | ((body: string) => boolean)> | ((headers: Record<string, string>) => boolean);
+    /** Query params to intercept on */
+    query?: Record<string, any>;
+  }
+  export interface MockDispatch<TData extends object = object, TError extends Error = Error> extends Options {
+    times: number | null;
+    persist: boolean;
+    consumed: boolean;
+    data: MockDispatchData<TData, TError>;
+  }
+  export interface MockDispatchData<TData extends object = object, TError extends Error = Error> extends MockResponseOptions {
+    error: TError | null;
+    statusCode?: number;
+    data?: TData | string;
+  }
+  export interface MockResponseOptions {
+    headers?: IncomingHttpHeaders$1;
+    trailers?: Record<string, string>;
+  }
+  export interface MockResponseCallbackOptions {
+    path: string;
+    method: string;
+    headers?: Headers$2 | Record<string, string>;
+    origin?: string;
+    body?: BodyInit$1 | Dispatcher$1.DispatchOptions['body'] | null;
+    maxRedirections?: number;
+  }
+  export type MockResponseDataHandler<TData extends object = object> = (opts: MockResponseCallbackOptions) => TData | Buffer | string;
+  export type MockReplyOptionsCallback<TData extends object = object> = (opts: MockResponseCallbackOptions) => {
+    statusCode: number;
+    data?: TData | Buffer | string;
+    responseOptions?: MockResponseOptions;
+  };
+}
+//#endregion
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/utility.d.ts
+type AutocompletePrimitiveBaseType<T> = T extends string ? string : T extends number ? number : T extends boolean ? boolean : never;
+type Autocomplete<T> = T | (AutocompletePrimitiveBaseType<T> & Record<never, never>);
+//#endregion
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/header.d.ts
+/**
+ * The header type declaration of `undici`.
+ */
+type IncomingHttpHeaders = Record<string, string | string[] | undefined>;
+/**
+ * The header type declaration of `undici` for outgoing requests.
+ */
+type OutgoingHttpHeaders = Record<string, number | string | string[] | undefined>;
+type HeaderNames = Autocomplete<'Accept' | 'Accept-CH' | 'Accept-Charset' | 'Accept-Encoding' | 'Accept-Language' | 'Accept-Patch' | 'Accept-Post' | 'Accept-Ranges' | 'Access-Control-Allow-Credentials' | 'Access-Control-Allow-Headers' | 'Access-Control-Allow-Methods' | 'Access-Control-Allow-Origin' | 'Access-Control-Expose-Headers' | 'Access-Control-Max-Age' | 'Access-Control-Request-Headers' | 'Access-Control-Request-Method' | 'Age' | 'Allow' | 'Alt-Svc' | 'Alt-Used' | 'Authorization' | 'Cache-Control' | 'Clear-Site-Data' | 'Connection' | 'Content-Disposition' | 'Content-Encoding' | 'Content-Language' | 'Content-Length' | 'Content-Location' | 'Content-Range' | 'Content-Security-Policy' | 'Content-Security-Policy-Report-Only' | 'Content-Type' | 'Cookie' | 'Cross-Origin-Embedder-Policy' | 'Cross-Origin-Opener-Policy' | 'Cross-Origin-Resource-Policy' | 'Date' | 'Device-Memory' | 'ETag' | 'Expect' | 'Expect-CT' | 'Expires' | 'Forwarded' | 'From' | 'Host' | 'If-Match' | 'If-Modified-Since' | 'If-None-Match' | 'If-Range' | 'If-Unmodified-Since' | 'Keep-Alive' | 'Last-Modified' | 'Link' | 'Location' | 'Max-Forwards' | 'Origin' | 'Permissions-Policy' | 'Priority' | 'Proxy-Authenticate' | 'Proxy-Authorization' | 'Range' | 'Referer' | 'Referrer-Policy' | 'Retry-After' | 'Sec-Fetch-Dest' | 'Sec-Fetch-Mode' | 'Sec-Fetch-Site' | 'Sec-Fetch-User' | 'Sec-Purpose' | 'Sec-WebSocket-Accept' | 'Server' | 'Server-Timing' | 'Service-Worker-Navigation-Preload' | 'Set-Cookie' | 'SourceMap' | 'Strict-Transport-Security' | 'TE' | 'Timing-Allow-Origin' | 'Trailer' | 'Transfer-Encoding' | 'Upgrade' | 'Upgrade-Insecure-Requests' | 'User-Agent' | 'Vary' | 'Via' | 'WWW-Authenticate' | 'X-Content-Type-Options' | 'X-Frame-Options'>;
+type IANARegisteredMimeType = Autocomplete<'audio/aac' | 'video/x-msvideo' | 'image/avif' | 'video/av1' | 'application/octet-stream' | 'image/bmp' | 'text/css' | 'text/csv' | 'application/vnd.ms-fontobject' | 'application/epub+zip' | 'image/gif' | 'application/gzip' | 'text/html' | 'image/x-icon' | 'text/calendar' | 'image/jpeg' | 'text/javascript' | 'application/json' | 'application/ld+json' | 'audio/x-midi' | 'audio/mpeg' | 'video/mp4' | 'video/mpeg' | 'audio/ogg' | 'video/ogg' | 'application/ogg' | 'audio/opus' | 'font/otf' | 'application/pdf' | 'image/png' | 'application/rtf' | 'image/svg+xml' | 'image/tiff' | 'video/mp2t' | 'font/ttf' | 'text/plain' | 'application/wasm' | 'video/webm' | 'audio/webm' | 'image/webp' | 'font/woff' | 'font/woff2' | 'application/xhtml+xml' | 'application/xml' | 'application/zip' | 'video/3gpp' | 'video/3gpp2' | 'model/gltf+json' | 'model/gltf-binary'>;
+type KnownHeaderValues = {
+  'content-type': IANARegisteredMimeType;
+};
+type HeaderRecord = { [K in HeaderNames | Lowercase<HeaderNames>]?: Lowercase<K> extends keyof KnownHeaderValues ? KnownHeaderValues[Lowercase<K>] : string; };
+//#endregion
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/readable.d.ts
+declare class BodyReadable extends Readable$1 {
+  constructor(opts: {
+    resume: (this: Readable$1, size: number) => void | null;
+    abort: () => void | null;
+    contentType?: string;
+    contentLength?: number;
+    highWaterMark?: number;
+  });
+  /** Consumes and returns the body as a string
+   *  https://fetch.spec.whatwg.org/#dom-body-text
+   */
+  text(): Promise<string>;
+  /** Consumes and returns the body as a JavaScript Object
+   *  https://fetch.spec.whatwg.org/#dom-body-json
+   */
+  json(): Promise<unknown>;
+  /** Consumes and returns the body as a Blob
+   *  https://fetch.spec.whatwg.org/#dom-body-blob
+   */
+  blob(): Promise<Blob$2>;
+  /** Consumes and returns the body as an Uint8Array
+   *  https://fetch.spec.whatwg.org/#dom-body-bytes
+   */
+  bytes(): Promise<Uint8Array>;
+  /** Consumes and returns the body as an ArrayBuffer
+   *  https://fetch.spec.whatwg.org/#dom-body-arraybuffer
+   */
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** Not implemented
+   *
+   *  https://fetch.spec.whatwg.org/#dom-body-formdata
+   */
+  formData(): Promise<never>;
+  /** Returns true if the body is not null and the body has been consumed
+   *
+   *  Otherwise, returns false
+   *
+   * https://fetch.spec.whatwg.org/#dom-body-bodyused
+   */
+  readonly bodyUsed: boolean;
+  /**
+   * If body is null, it should return null as the body
+   *
+   *  If body is not null, should return the body as a ReadableStream
+   *
+   *  https://fetch.spec.whatwg.org/#dom-body-body
+   */
+  readonly body: never | undefined;
+  /** Dumps the response body by reading `limit` number of bytes.
+   * @param opts.limit Number of bytes to read (optional) - Default: 131072
+   * @param opts.signal AbortSignal to cancel the operation (optional)
+   */
+  dump(opts?: {
+    limit: number;
+    signal?: AbortSignal;
+  }): Promise<void>;
+}
+//#endregion
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/fetch.d.ts
+type BodyInit = ArrayBuffer | AsyncIterable<Uint8Array> | Blob$2 | FormData$1 | Iterable<Uint8Array> | NodeJS.ArrayBufferView | URLSearchParams$2 | null | string;
 interface SpecIterator<T, TReturn = any, TNext = undefined> {
   next(...args: [] | [TNext]): IteratorResult<T, TReturn>;
 }
-interface SpecIterableIterator<T> extends SpecIterator<T> {
+interface SpecIteratorObject<T, TReturn = undefined, TNext = unknown> extends SpecIterator<T, TReturn, TNext> {
+  [Symbol.iterator](): SpecIteratorObject<T, TReturn, TNext>;
+  map<U>(callbackfn: (value: T, index: number) => U): SpecIteratorObject<U>;
+  filter<S extends T>(predicate: (value: T, index: number) => value is S): SpecIteratorObject<S>;
+  filter(predicate: (value: T, index: number) => unknown): SpecIteratorObject<T>;
+  take(limit: number): SpecIteratorObject<T>;
+  drop(count: number): SpecIteratorObject<T>;
+  flatMap<U>(callbackfn: (value: T, index: number) => Iterator<U> | Iterable<U>): SpecIteratorObject<U>;
+  reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number) => T): T;
+  reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number) => T, initialValue: T): T;
+  reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number) => U, initialValue: U): U;
+  toArray(): T[];
+  forEach(callbackfn: (value: T, index: number) => void): void;
+  some(predicate: (value: T, index: number) => unknown): boolean;
+  every(predicate: (value: T, index: number) => unknown): boolean;
+  find<S extends T>(predicate: (value: T, index: number) => value is S): S | undefined;
+  find(predicate: (value: T, index: number) => unknown): T | undefined;
+  readonly [Symbol.toStringTag]: string;
+}
+interface SpecIterableIterator<T> extends SpecIteratorObject<T> {
   [Symbol.iterator](): SpecIterableIterator<T>;
 }
 interface SpecIterable<T> {
-  [Symbol.iterator](): SpecIterator<T>;
+  [Symbol.iterator](): SpecIterableIterator<T>;
 }
-type HeadersInit$1 = string[][] | Record<string, string | ReadonlyArray<string>> | Headers$1;
+type HeadersInit$1 = [string, string][] | HeaderRecord | Headers$1;
 declare class Headers$1 implements SpecIterable<[string, string]> {
   constructor(init?: HeadersInit$1);
   readonly append: (name: string, value: string) => void;
@@ -125,7 +889,7 @@ declare class Headers$1 implements SpecIterable<[string, string]> {
   readonly [Symbol.iterator]: () => SpecIterableIterator<[string, string]>;
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/formdata.d.ts
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/formdata.d.ts
 /**
  * A `string` or `File` that represents a single value from a set of `FormData` key-value pairs.
  */
@@ -214,17 +978,19 @@ declare class FormData$1 {
   readonly [Symbol.toStringTag]: string;
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/connector.d.ts
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/connector.d.ts
 declare function buildConnector(options?: buildConnector.BuildOptions): buildConnector.connector;
 declare namespace buildConnector {
-  export type BuildOptions = (ConnectionOptions | TcpNetConnectOpts | IpcNetConnectOpts) & {
+  export type BuildOptions = (ConnectionOptions$1 | TcpNetConnectOpts$1 | IpcNetConnectOpts$1) & {
     allowH2?: boolean;
+    preferH2?: boolean;
     maxCachedSessions?: number | null;
     socketPath?: string | null;
     timeout?: number | null;
     port?: number;
     keepAlive?: boolean | null;
     keepAliveInitialDelay?: number | null;
+    typeOfService?: number | null;
   };
   export interface Options {
     hostname: string;
@@ -233,50 +999,64 @@ declare namespace buildConnector {
     port: string;
     servername?: string;
     localAddress?: string | null;
-    httpSocket?: Socket;
+    socketPath?: string | null;
+    httpSocket?: Socket$1;
   }
   export type Callback = (...args: CallbackArgs) => void;
-  type CallbackArgs = [null, Socket | TLSSocket] | [Error, null];
+  type CallbackArgs = [null, Socket$1 | TLSSocket$1] | [Error, null];
   export interface connector {
     (options: buildConnector.Options, callback: buildConnector.Callback): void;
   }
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/client.d.ts
-type ClientConnectOptions = Omit<Dispatcher.ConnectOptions, "origin">;
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/client-stats.d.ts
+declare class ClientStats {
+  constructor(pool: Client);
+  /** If socket has open connection. */
+  connected: boolean;
+  /** Number of open socket connections in this client that do not have an active request. */
+  pending: number;
+  /** Number of currently active requests of this client. */
+  running: number;
+  /** Number of active, pending, or queued requests of this client. */
+  size: number;
+}
+//#endregion
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/client.d.ts
+type ClientConnectOptions<TOpaque = null> = Omit<Dispatcher.ConnectOptions<TOpaque>, 'origin'>;
+// TODO: Pendings
+// 1. Reflect this on Client instantiation
+// 2. Client H2 should use this namespaced options instead.
 /**
  * A basic HTTP/1.1 client, mapped on top a single TCP/TLS connection. Pipelining is disabled by default.
  */
 declare class Client extends Dispatcher {
-  constructor(url: string | URL$1, options?: Client.Options);
+  constructor(url: string | URL$2, options?: Client.Options);
   /** Property to get and set the pipelining factor. */
   pipelining: number;
   /** `true` after `client.close()` has been called. */
   closed: boolean;
   /** `true` after `client.destroyed()` has been called or `client.close()` has been called and the client shutdown has completed. */
   destroyed: boolean;
+  /** Aggregate stats for a Client. */
+  readonly stats: ClientStats;
   // Override dispatcher APIs.
-  override connect(options: ClientConnectOptions): Promise<Dispatcher.ConnectData>;
-  override connect(options: ClientConnectOptions, callback: (err: Error | null, data: Dispatcher.ConnectData) => void): void;
+  override connect<TOpaque = null>(options: ClientConnectOptions<TOpaque>): Promise<Dispatcher.ConnectData<TOpaque>>;
+  override connect<TOpaque = null>(options: ClientConnectOptions<TOpaque>, callback: (err: Error | null, data: Dispatcher.ConnectData<TOpaque>) => void): void;
 }
 declare namespace Client {
-  export interface OptionsInterceptors {
-    Client: readonly Dispatcher.DispatchInterceptor[];
-  }
   export interface Options {
-    /** TODO */
-    interceptors?: OptionsInterceptors;
     /** The maximum length of request headers in bytes. Default: Node.js' `--max-http-header-size` or `16384` (16KiB). */
     maxHeaderSize?: number;
-    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers (Node 14 and above only). Default: `300e3` milliseconds (300s). */
+    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers (Node 14 and above only). Default: `300e3` milliseconds (300s). HTTP/1.1 parser timeouts are not guaranteed to fire with exact millisecond precision: delays up to 1000ms use native timers, while larger delays use lower-overhead fast timers with a target resolution around 500ms. */
     headersTimeout?: number;
     /** @deprecated unsupported socketTimeout, use headersTimeout & bodyTimeout instead */
     socketTimeout?: never;
     /** @deprecated unsupported requestTimeout, use headersTimeout & bodyTimeout instead */
     requestTimeout?: never;
-    /** TODO */
+    /** The timeout for establishing a socket connection, in milliseconds. Use `0` to disable it entirely. Default: `10e3` milliseconds (10s). */
     connectTimeout?: number;
-    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use `0` to disable it entirely. Default: `300e3` milliseconds (300s). */
+    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use `0` to disable it entirely. Default: `300e3` milliseconds (300s). HTTP/1.1 parser timeouts are not guaranteed to fire with exact millisecond precision: delays up to 1000ms use native timers, while larger delays use lower-overhead fast timers with a target resolution around 500ms. */
     bodyTimeout?: number;
     /** @deprecated unsupported idleTimeout, use keepAliveTimeout instead */
     idleTimeout?: never;
@@ -290,40 +1070,65 @@ declare namespace Client {
     keepAliveMaxTimeout?: number;
     /** A number of milliseconds subtracted from server *keep-alive* hints when overriding `idleTimeout` to account for timing inaccuracies caused by e.g. transport latency. Default: `1e3` milliseconds (1s). */
     keepAliveTimeoutThreshold?: number;
-    /** TODO */
+    /** An IPC endpoint, either a Unix domain socket or Windows named pipe. Default: `null`. */
     socketPath?: string;
-    /** The amount of concurrent requests to be sent over the single TCP/TLS connection according to [RFC7230](https://tools.ietf.org/html/rfc7230#section-6.3.2). Default: `1`. */
+    /** The amount of concurrent requests to be sent over the single TCP/TLS connection according to [RFC7230](https://tools.ietf.org/html/rfc7230#section-6.3.2). Only enable values greater than `1` when the remote server is trusted. Default: `1`. */
     pipelining?: number;
     /** @deprecated use the connect option instead */
     tls?: never;
     /** If `true`, an error is thrown when the request content-length header doesn't match the length of the request body. Default: `true`. */
     strictContentLength?: boolean;
-    /** TODO */
+    /** Maximum number of TLS cached sessions used by the built-in connector. Use `0` to disable TLS session caching. Default: `100`. */
     maxCachedSessions?: number;
-    /** TODO */
-    maxRedirections?: number;
-    /** TODO */
-    connect?: buildConnector.BuildOptions | buildConnector.connector;
-    /** TODO */
+    /** Connector options passed to `buildConnector`, or a custom connector function. Default: `null`. */
+    connect?: Partial<buildConnector.BuildOptions> | buildConnector.connector;
+    /** The maximum number of requests to send over a single connection before it is reset. Use `0` to disable this limit. Default: `null`. */
     maxRequestsPerClient?: number;
-    /** TODO */
+    /** Local IP address the socket should connect from. */
     localAddress?: string;
     /** Max response body size in bytes, -1 is disabled */
     maxResponseSize?: number;
+    /** WebSocket-specific options */
+    webSocket?: Client.WebSocketOptions;
+    /** EventSource-specific options */
+    eventSource?: Client.EventSourceOptions;
     /** Enables a family autodetection algorithm that loosely implements section 5 of RFC 8305. */
     autoSelectFamily?: boolean;
     /** The amount of time in milliseconds to wait for a connection attempt to finish before trying the next address when using the `autoSelectFamily` option. */
     autoSelectFamilyAttemptTimeout?: number;
     /**
      * @description Enables support for H2 if the server has assigned bigger priority to it through ALPN negotiation.
-     * @default false
+     * @default true
      */
     allowH2?: boolean;
     /**
      * @description Dictates the maximum number of concurrent streams for a single H2 session. It can be overridden by a SETTINGS remote frame.
      * @default 100
+     * @deprecated Use h2Options.maxConcurrentStreams instead
      */
     maxConcurrentStreams?: number;
+    /**
+     * @description Sets the HTTP/2 stream-level flow-control window size (SETTINGS_INITIAL_WINDOW_SIZE).
+     * @default 262144
+     * @deprecated Use h2Options.settings.initialWindowSize instead
+     */
+    initialWindowSize?: number;
+    /**
+     * @description Sets the HTTP/2 connection-level flow-control window size (ClientHttp2Session.setLocalWindowSize).
+     * @default 524288
+     * @deprecated Use h2Options.connectionWindowSize instead
+     */
+    connectionWindowSize?: number;
+    /**
+     * @description Time interval between PING frames dispatch
+     * @default 60000
+     * @deprecated Use h2Options.connectionWindowSize instead
+     */
+    pingInterval?: number;
+    /**
+     * @description HTTP/2 configuration options
+     */
+    h2Options?: Client.H2Options;
   }
   export interface SocketInfo {
     localAddress?: string;
@@ -335,9 +1140,57 @@ declare namespace Client {
     bytesWritten?: number;
     bytesRead?: number;
   }
+  export interface WebSocketOptions {
+    /**
+     * Maximum number of fragments in a message. Set to 0 to disable the limit.
+     * @default 131072
+     */
+    maxFragments?: number;
+    /**
+     * Maximum allowed payload size in bytes for WebSocket messages.
+     * Applied to uncompressed messages, compressed frame payloads, and decompressed (permessage-deflate) messages.
+     * Set to 0 to disable the limit.
+     * @default 134217728 (128 MB)
+     */
+    maxPayloadSize?: number;
+  }
+  export interface H2Options extends Omit<SessionOptions, keyof buildConnector.BuildOptions> {
+    /**
+     * @description Sets the HTTP/2 connection-level flow-control window size (ClientHttp2Session.setLocalWindowSize).
+     * @default 524288
+     */
+    connectionWindowSize?: number;
+    /**
+     * @description Time interval between PING frames dispatch
+     * @default 60000
+     */
+    pingInterval?: number;
+    /**
+     * @description Dictates the maximum number of concurrent streams for a single H2 session. It can be overridden by a SETTINGS remote frame.
+     * @default 100
+     */
+    maxConcurrentStreams?: number;
+    /**
+     * @description Enable support for H2C (plain text)
+     * @default false
+     */
+    useH2c?: boolean;
+    /**
+     * @description SETTINGS frame object. Default to 'node:http2' defaults
+     */
+    settings?: Omit<SessionOptions['settings'], 'enablePush' | 'maxConcurrentStreams' | 'enableConnectProtocol'>;
+  }
+  export interface EventSourceOptions {
+    /**
+     * Maximum allowed event size in bytes for EventSource messages.
+     * Set to 0 to disable the limit.
+     * @default buffer.kStringMaxLength
+     */
+    maxEventSize?: number;
+  }
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/errors.d.ts
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/errors.d.ts
 declare namespace Errors {
   export class UndiciError extends Error {
     name: string;
@@ -363,13 +1216,15 @@ declare namespace Errors {
     name: 'BodyTimeoutError';
     code: 'UND_ERR_BODY_TIMEOUT';
   }
-  export class ResponseStatusCodeError extends UndiciError {
-    constructor(message?: string, statusCode?: number, headers?: IncomingHttpHeaders | string[] | null, body?: null | Record<string, any> | string);
-    name: 'ResponseStatusCodeError';
-    code: 'UND_ERR_RESPONSE_STATUS_CODE';
-    body: null | Record<string, any> | string;
-    status: number;
+  export class ResponseError extends UndiciError {
+    constructor(message: string, code: number, options: {
+      headers?: IncomingHttpHeaders | string[] | null;
+      body?: null | Record<string, any> | string;
+    });
+    name: 'ResponseError';
+    code: 'UND_ERR_RESPONSE';
     statusCode: number;
+    body: null | Record<string, any> | string;
     headers: IncomingHttpHeaders | string[] | null;
   }
   /** Passed an invalid argument. */
@@ -448,149 +1303,163 @@ declare namespace Errors {
     headers: Record<string, string | string[]>;
   }
   export class SecureProxyConnectionError extends UndiciError {
+    constructor(cause?: Error, message?: string, options?: Record<any, any>);
     name: 'SecureProxyConnectionError';
     code: 'UND_ERR_PRX_TLS';
   }
+  export class ProxyConnectionError extends UndiciError {
+    constructor(cause?: Error, message?: string, options?: Record<any, any>);
+    name: 'ProxyConnectionError';
+    code: 'UND_ERR_PRX_CONN';
+  }
+  export class MaxOriginsReachedError extends UndiciError {
+    name: 'MaxOriginsReachedError';
+    code: 'UND_ERR_MAX_ORIGINS_REACHED';
+  }
+  /** SOCKS5 proxy related error. */
+  export class Socks5ProxyError extends UndiciError {
+    constructor(message?: string, code?: string);
+    name: 'Socks5ProxyError';
+    code: string;
+  }
+  /** WebSocket decompressed message exceeded maximum size. */
+  export class MessageSizeExceededError extends UndiciError {
+    name: 'MessageSizeExceededError';
+    code: 'UND_ERR_WS_MESSAGE_SIZE_EXCEEDED';
+  }
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/dispatcher.d.ts
-type AbortSignal$1 = unknown;
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/dispatcher.d.ts
+type UndiciHeaders = OutgoingHttpHeaders | string[] | Iterable<[string, string | string[] | undefined]> | null;
 /** Dispatcher is the core API used to dispatch requests. */
-declare class Dispatcher extends EventEmitter {
+declare class Dispatcher extends EventEmitter$1 {
   /** Dispatches a request. This API is expected to evolve through semver-major versions and is less stable than the preceding higher level APIs. It is primarily intended for library developers who implement higher level APIs on top of this. */
-  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers): boolean;
+  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean;
   /** Starts two-way communications with the requested resource. */
-  connect(options: Dispatcher.ConnectOptions): Promise<Dispatcher.ConnectData>;
-  connect(options: Dispatcher.ConnectOptions, callback: (err: Error | null, data: Dispatcher.ConnectData) => void): void;
+  connect<TOpaque = null>(options: Dispatcher.ConnectOptions<TOpaque>, callback: (err: Error | null, data: Dispatcher.ConnectData<TOpaque>) => void): void;
+  connect<TOpaque = null>(options: Dispatcher.ConnectOptions<TOpaque>): Promise<Dispatcher.ConnectData<TOpaque>>;
   /** Compose a chain of dispatchers */
   compose(dispatchers: Dispatcher.DispatcherComposeInterceptor[]): Dispatcher.ComposedDispatcher;
   compose(...dispatchers: Dispatcher.DispatcherComposeInterceptor[]): Dispatcher.ComposedDispatcher;
   /** Performs an HTTP request. */
-  request(options: Dispatcher.RequestOptions): Promise<Dispatcher.ResponseData>;
-  request(options: Dispatcher.RequestOptions, callback: (err: Error | null, data: Dispatcher.ResponseData) => void): void;
+  request<TOpaque = null>(options: Dispatcher.RequestOptions<TOpaque>, callback: (err: Error | null, data: Dispatcher.ResponseData<TOpaque>) => void): void;
+  request<TOpaque = null>(options: Dispatcher.RequestOptions<TOpaque>): Promise<Dispatcher.ResponseData<TOpaque>>;
   /** For easy use with `stream.pipeline`. */
-  pipeline(options: Dispatcher.PipelineOptions, handler: Dispatcher.PipelineHandler): Duplex;
+  pipeline<TOpaque = null>(options: Dispatcher.PipelineOptions<TOpaque>, handler: Dispatcher.PipelineHandler<TOpaque>): Duplex$1;
   /** A faster version of `Dispatcher.request`. */
-  stream(options: Dispatcher.RequestOptions, factory: Dispatcher.StreamFactory): Promise<Dispatcher.StreamData>;
-  stream(options: Dispatcher.RequestOptions, factory: Dispatcher.StreamFactory, callback: (err: Error | null, data: Dispatcher.StreamData) => void): void;
+  stream<TOpaque = null>(options: Dispatcher.RequestOptions<TOpaque>, factory: Dispatcher.StreamFactory<TOpaque>, callback: (err: Error | null, data: Dispatcher.StreamData<TOpaque>) => void): void;
+  stream<TOpaque = null>(options: Dispatcher.RequestOptions<TOpaque>, factory: Dispatcher.StreamFactory<TOpaque>): Promise<Dispatcher.StreamData<TOpaque>>;
   /** Upgrade to a different protocol. */
-  upgrade(options: Dispatcher.UpgradeOptions): Promise<Dispatcher.UpgradeData>;
   upgrade(options: Dispatcher.UpgradeOptions, callback: (err: Error | null, data: Dispatcher.UpgradeData) => void): void;
+  upgrade(options: Dispatcher.UpgradeOptions): Promise<Dispatcher.UpgradeData>;
   /** Closes the client and gracefully waits for enqueued requests to complete before invoking the callback (or returning a promise if no callback is provided). */
-  close(): Promise<void>;
   close(callback: () => void): void;
+  close(): Promise<void>;
   /** Destroy the client abruptly with the given err. All the pending and running requests will be asynchronously aborted and error. Waits until socket is closed before invoking the callback (or returning a promise if no callback is provided). Since this operation is asynchronously dispatched there might still be some progress on dispatched requests. */
-  destroy(): Promise<void>;
-  destroy(err: Error | null): Promise<void>;
-  destroy(callback: () => void): void;
   destroy(err: Error | null, callback: () => void): void;
-  on(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  on(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  on(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  on(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  once(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  once(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  once(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  once(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  off(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  off(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  off(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  off(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  addListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  addListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  addListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  addListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  removeListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  removeListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  removeListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  removeListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  prependListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  prependListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  prependListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  prependListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  prependOnceListener(eventName: 'connect', callback: (origin: URL$1, targets: readonly Dispatcher[]) => void): this;
-  prependOnceListener(eventName: 'disconnect', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  prependOnceListener(eventName: 'connectionError', callback: (origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
-  prependOnceListener(eventName: 'drain', callback: (origin: URL$1) => void): this;
-  listeners(eventName: 'connect'): ((origin: URL$1, targets: readonly Dispatcher[]) => void)[];
-  listeners(eventName: 'disconnect'): ((origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
-  listeners(eventName: 'connectionError'): ((origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
-  listeners(eventName: 'drain'): ((origin: URL$1) => void)[];
-  rawListeners(eventName: 'connect'): ((origin: URL$1, targets: readonly Dispatcher[]) => void)[];
-  rawListeners(eventName: 'disconnect'): ((origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
-  rawListeners(eventName: 'connectionError'): ((origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
-  rawListeners(eventName: 'drain'): ((origin: URL$1) => void)[];
-  emit(eventName: 'connect', origin: URL$1, targets: readonly Dispatcher[]): boolean;
-  emit(eventName: 'disconnect', origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError): boolean;
-  emit(eventName: 'connectionError', origin: URL$1, targets: readonly Dispatcher[], error: Errors.UndiciError): boolean;
-  emit(eventName: 'drain', origin: URL$1): boolean;
+  destroy(callback: () => void): void;
+  destroy(err: Error | null): Promise<void>;
+  destroy(): Promise<void>;
+  on(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  on(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  on(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  on(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  once(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  once(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  once(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  once(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  off(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  off(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  off(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  off(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  addListener(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  addListener(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  addListener(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  addListener(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  removeListener(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  removeListener(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  removeListener(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  removeListener(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  prependListener(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  prependListener(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  prependListener(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  prependListener(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  prependOnceListener(eventName: 'connect', callback: (origin: URL$2, targets: readonly Dispatcher[]) => void): this;
+  prependOnceListener(eventName: 'disconnect', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  prependOnceListener(eventName: 'connectionError', callback: (origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void): this;
+  prependOnceListener(eventName: 'drain', callback: (origin: URL$2) => void): this;
+  listeners(eventName: 'connect'): ((origin: URL$2, targets: readonly Dispatcher[]) => void)[];
+  listeners(eventName: 'disconnect'): ((origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
+  listeners(eventName: 'connectionError'): ((origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
+  listeners(eventName: 'drain'): ((origin: URL$2) => void)[];
+  rawListeners(eventName: 'connect'): ((origin: URL$2, targets: readonly Dispatcher[]) => void)[];
+  rawListeners(eventName: 'disconnect'): ((origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
+  rawListeners(eventName: 'connectionError'): ((origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError) => void)[];
+  rawListeners(eventName: 'drain'): ((origin: URL$2) => void)[];
+  emit(eventName: 'connect', origin: URL$2, targets: readonly Dispatcher[]): boolean;
+  emit(eventName: 'disconnect', origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError): boolean;
+  emit(eventName: 'connectionError', origin: URL$2, targets: readonly Dispatcher[], error: Errors.UndiciError): boolean;
+  emit(eventName: 'drain', origin: URL$2): boolean;
 }
 declare namespace Dispatcher {
   export interface ComposedDispatcher extends Dispatcher {}
-  export type DispatcherComposeInterceptor = (dispatch: Dispatcher['dispatch']) => Dispatcher['dispatch'];
+  export type Dispatch = Dispatcher['dispatch'];
+  export type DispatcherComposeInterceptor = (dispatch: Dispatch) => Dispatch;
   export interface DispatchOptions {
-    origin?: string | URL$1;
+    origin?: string | URL$2;
     path: string;
     method: HttpMethod;
     /** Default: `null` */
-    body?: string | Buffer | Uint8Array | Readable | null | FormData$1;
+    body?: string | Buffer | Uint8Array | Readable$1 | null | FormData$1;
     /** Default: `null` */
-    headers?: IncomingHttpHeaders | string[] | Iterable<[string, string | string[] | undefined]> | null;
+    headers?: UndiciHeaders;
     /** Query string params to be embedded in the request URL. Default: `null` */
     query?: Record<string, any>;
     /** Whether the requests can be safely retried or not. If `false` the request won't be sent until all preceding requests in the pipeline have completed. Default: `true` if `method` is `HEAD` or `GET`. */
     idempotent?: boolean;
-    /** Whether the response is expected to take a long time and would end up blocking the pipeline. When this is set to `true` further pipelining will be avoided on the same connection until headers have been received. */
+    /** Whether the response is expected to take a long time and would end up blocking the pipeline. When this is set to `true` further pipelining will be avoided on the same connection until headers have been received. Defaults to `method !== 'HEAD'`. */
     blocking?: boolean;
+    /** The IP Type of Service (ToS) value for the request socket. Must be an integer between 0 and 255. */
+    typeOfService?: number | null;
     /** Upgrade the request. Should be used to specify the kind of upgrade i.e. `'Websocket'`. Default: `method === 'CONNECT' || null`. */
     upgrade?: boolean | string | null;
-    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers. Defaults to 300 seconds. */
+    /** The amount of time, in milliseconds, the parser will wait to receive the complete HTTP headers. Defaults to 300 seconds. HTTP/1.1 parser timeouts are not guaranteed to fire with exact millisecond precision: delays up to 1000ms use native timers, while larger delays use lower-overhead fast timers with a target resolution around 500ms. */
     headersTimeout?: number | null;
-    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use 0 to disable it entirely. Defaults to 300 seconds. */
+    /** The timeout after which a request will time out, in milliseconds. Monitors time between receiving body data. Use 0 to disable it entirely. Defaults to 300 seconds. HTTP/1.1 parser timeouts are not guaranteed to fire with exact millisecond precision: delays up to 1000ms use native timers, while larger delays use lower-overhead fast timers with a target resolution around 500ms. */
     bodyTimeout?: number | null;
     /** Whether the request should stablish a keep-alive or not. Default `false` */
     reset?: boolean;
-    /** Whether Undici should throw an error upon receiving a 4xx or 5xx response from the server. Defaults to false */
-    throwOnError?: boolean;
-    /** For H2, it appends the expect: 100-continue header, and halts the request body until a 100-continue is received from the remote server*/
+    /** For H2, it appends the expect: 100-continue header, and halts the request body until a 100-continue is received from the remote server */
     expectContinue?: boolean;
   }
-  export interface ConnectOptions {
-    origin: string | URL$1;
+  export interface ConnectOptions<TOpaque = null> {
+    origin: string | URL$2;
     path: string;
     /** Default: `null` */
-    headers?: IncomingHttpHeaders | string[] | null;
+    headers?: UndiciHeaders;
     /** Default: `null` */
-    signal?: AbortSignal$1 | EventEmitter | null;
+    signal?: AbortSignal | EventEmitter$1 | null;
     /** This argument parameter is passed through to `ConnectData` */
-    opaque?: unknown;
-    /** Default: 0 */
-    maxRedirections?: number;
-    /** Default: false */
-    redirectionLimitReached?: boolean;
+    opaque?: TOpaque;
     /** Default: `null` */
-    responseHeader?: 'raw' | null;
+    responseHeaders?: 'raw' | null;
   }
-  export interface RequestOptions extends DispatchOptions {
+  export interface RequestOptions<TOpaque = null> extends DispatchOptions {
     /** Default: `null` */
-    opaque?: unknown;
+    opaque?: TOpaque;
     /** Default: `null` */
-    signal?: AbortSignal$1 | EventEmitter | null;
-    /** Default: 0 */
-    maxRedirections?: number;
-    /** Default: false */
-    redirectionLimitReached?: boolean;
+    signal?: AbortSignal | EventEmitter$1 | null;
     /** Default: `null` */
     onInfo?: (info: {
       statusCode: number;
       headers: Record<string, string | string[]>;
     }) => void;
     /** Default: `null` */
-    responseHeader?: 'raw' | null;
+    responseHeaders?: 'raw' | null;
     /** Default: `64 KiB` */
     highWaterMark?: number;
   }
-  export interface PipelineOptions extends RequestOptions {
+  export interface PipelineOptions<TOpaque = null> extends RequestOptions<TOpaque> {
     /** `true` if the `handler` will return an object stream. Default: `false` */
     objectMode?: boolean;
   }
@@ -599,75 +1468,78 @@ declare namespace Dispatcher {
     /** Default: `'GET'` */
     method?: string;
     /** Default: `null` */
-    headers?: IncomingHttpHeaders | string[] | null;
+    headers?: UndiciHeaders;
     /** A string of comma separated protocols, in descending preference order. Default: `'Websocket'` */
     protocol?: string;
     /** Default: `null` */
-    signal?: AbortSignal$1 | EventEmitter | null;
-    /** Default: 0 */
-    maxRedirections?: number;
-    /** Default: false */
-    redirectionLimitReached?: boolean;
+    signal?: AbortSignal | EventEmitter$1 | null;
     /** Default: `null` */
-    responseHeader?: 'raw' | null;
+    responseHeaders?: 'raw' | null;
   }
-  export interface ConnectData {
+  export interface ConnectData<TOpaque = null> {
     statusCode: number;
     headers: IncomingHttpHeaders;
-    socket: Duplex;
-    opaque: unknown;
+    socket: Duplex$1;
+    opaque: TOpaque;
   }
-  export interface ResponseData {
+  export interface ResponseData<TOpaque = null> {
     statusCode: number;
+    statusText: string;
     headers: IncomingHttpHeaders;
     body: BodyReadable & BodyMixin;
     trailers: Record<string, string>;
-    opaque: unknown;
+    opaque: TOpaque;
     context: object;
   }
-  export interface PipelineHandlerData {
+  export interface PipelineHandlerData<TOpaque = null> {
     statusCode: number;
     headers: IncomingHttpHeaders;
-    opaque: unknown;
+    opaque: TOpaque;
     body: BodyReadable;
     context: object;
   }
-  export interface StreamData {
-    opaque: unknown;
+  export interface StreamData<TOpaque = null> {
+    opaque: TOpaque;
     trailers: Record<string, string>;
   }
-  export interface UpgradeData {
+  export interface UpgradeData<TOpaque = null> {
     headers: IncomingHttpHeaders;
-    socket: Duplex;
-    opaque: unknown;
+    socket: Duplex$1;
+    opaque: TOpaque;
   }
-  export interface StreamFactoryData {
+  export interface StreamFactoryData<TOpaque = null> {
     statusCode: number;
     headers: IncomingHttpHeaders;
-    opaque: unknown;
+    opaque: TOpaque;
     context: object;
   }
-  export type StreamFactory = (data: StreamFactoryData) => Writable;
-  export interface DispatchHandlers {
-    /** Invoked before request is dispatched on socket. May be invoked multiple times when a request is retried when the request at the head of the pipeline fails. */
-    onConnect?(abort: (err?: Error) => void): void;
-    /** Invoked when an error has occurred. */
-    onError?(err: Error): void;
-    /** Invoked when request is upgraded either due to a `Upgrade` header or `CONNECT` method. */
-    onUpgrade?(statusCode: number, headers: Buffer[] | string[] | null, socket: Duplex): void;
+  export type StreamFactory<TOpaque = null> = (data: StreamFactoryData<TOpaque>) => Writable$1;
+  export interface DispatchController {
+    get aborted(): boolean;
+    get paused(): boolean;
+    get reason(): Error | null;
+    rawHeaders?: Buffer[] | string[] | IncomingHttpHeaders | null;
+    rawTrailers?: Buffer[] | string[] | IncomingHttpHeaders | null;
+    abort(reason: Error): void;
+    pause(): void;
+    resume(): void;
+  }
+  export interface DispatchHandler {
+    onRequestStart?(controller: DispatchController, context: any): void;
+    onRequestUpgrade?(controller: DispatchController, statusCode: number, headers: IncomingHttpHeaders, socket: Duplex$1): void;
+    onResponseStart?(controller: DispatchController, statusCode: number, headers: IncomingHttpHeaders, statusMessage?: string): void;
+    onResponseData?(controller: DispatchController, chunk: Buffer): void;
+    onResponseEnd?(controller: DispatchController, trailers: IncomingHttpHeaders): void;
+    onResponseError?(controller: DispatchController, error: Error): void;
     /** Invoked when response is received, before headers have been read. **/
     onResponseStarted?(): void;
-    /** Invoked when statusCode and headers have been received. May be invoked multiple times due to 1xx informational headers. */
-    onHeaders?(statusCode: number, headers: Buffer[], resume: () => void, statusText: string): boolean;
-    /** Invoked when response payload data is received. */
-    onData?(chunk: Buffer): boolean;
-    /** Invoked when response payload and trailers have been received and the request has completed. */
-    onComplete?(trailers: string[] | null): void;
     /** Invoked when a body chunk is sent to the server. May be invoked multiple times for chunked requests */
-    onBodySent?(chunkSize: number, totalBytesSent: number): void;
+    onBodySent?(chunk: Buffer): void;
+    /** Invoked after the request body is fully sent. */
+    onRequestSent?(): void;
   }
-  export type PipelineHandler = (data: PipelineHandlerData) => Readable;
-  export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE' | 'CONNECT' | 'OPTIONS' | 'TRACE' | 'PATCH';
+  export type PipelineHandler<TOpaque = null> = (data: PipelineHandlerData<TOpaque>) => Readable$1;
+  export type HttpMethod = Autocomplete<'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE' | 'CONNECT' | 'OPTIONS' | 'TRACE' | 'PATCH'>;
   /**
    * @link https://fetch.spec.whatwg.org/#body-mixin
    */
@@ -675,18 +1547,18 @@ declare namespace Dispatcher {
     readonly body?: never;
     readonly bodyUsed: boolean;
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<Blob$1>;
+    blob(): Promise<Blob$2>;
     bytes(): Promise<Uint8Array>;
     formData(): Promise<never>;
     json(): Promise<unknown>;
     text(): Promise<string>;
   }
   export interface DispatchInterceptor {
-    (dispatch: Dispatcher['dispatch']): Dispatcher['dispatch'];
+    (dispatch: Dispatch): Dispatch;
   }
 }
 //#endregion
-//#region node_modules/.pnpm/undici-types@6.21.0/node_modules/undici-types/mock-interceptor.d.ts
+//#region ../../../AppData/Local/pnpm/store/v11/links/@/undici/8.11.2/540de117f520e26eb366da359d3efedef88ef85230031e43dab3cd8a442720f9/node_modules/undici/types/mock-interceptor.d.ts
 /** The scope associated with a mock dispatch. */
 declare class MockScope<TData extends object = object> {
   constructor(mockDispatch: MockInterceptor.MockDispatch<TData>);
@@ -747,14 +1619,14 @@ declare namespace MockInterceptor {
     headers?: Headers$1 | Record<string, string>;
     origin?: string;
     body?: BodyInit | Dispatcher.DispatchOptions['body'] | null;
-    maxRedirections?: number;
   }
   export type MockResponseDataHandler<TData extends object = object> = (opts: MockResponseCallbackOptions) => TData | Buffer | string;
-  export type MockReplyOptionsCallback<TData extends object = object> = (opts: MockResponseCallbackOptions) => {
+  export type MockReplyOptions<TData extends object = object> = {
     statusCode: number;
     data?: TData | Buffer | string;
     responseOptions?: MockResponseOptions;
   };
+  export type MockReplyOptionsCallback<TData extends object = object> = (opts: MockResponseCallbackOptions) => MockReplyOptions<TData> | Promise<MockReplyOptions<TData>>;
 }
 //#endregion
 //#region src/catalog.d.ts
@@ -789,6 +1661,12 @@ interface CodeArtsModelInfo {
   contextWindow: number;
   maxTokens: number;
   supportsImages: boolean;
+  /**
+   * 图片不是模型原生支持的：请求层会先按原图发一次，被上游判 `not multimodal`
+   * 后再由视觉模型转述成文字重发。设置里的「图片转述」开关打开时，被图片黑名单
+   * 挡住的模型会临时带上这个标记。
+   */
+  imageBridge?: boolean;
   /**
    * 该模型可选的思考强度。
    *
@@ -829,11 +1707,14 @@ declare class CodeArtsCatalog {
   private normalized;
   /** 上次归一化时图片黑名单的大小 —— 黑名单是运行时长的，变了就得重算。 */
   private normalizedWithBlocked;
+  /** 上次归一化时的转述开关状态。 */
+  private normalizedBridge;
   current(): readonly CodeArtsModelInfo[];
   set(models: readonly CodeArtsModelInfo[]): void;
   /**
    * 上游清单爱把纯文本模型标成 `supports_images: true`（GLM-5.2、-1017 实测都这样），
-   * 被它骗过一次的模型在这里一律摘掉图片能力。
+   * 被它骗过一次的模型在这里一律摘掉图片能力；开了图片转述则改挂 `imageBridge`，
+   * 让宿主允许贴图，由请求层负责转述。
    */
   private normalize;
 }
@@ -1160,9 +2041,11 @@ interface PoolOptions {
 }
 declare class CodeArtsAccountPool {
   private readonly accounts;
-  private readonly maxConcurrent;
+  private maxConcurrent;
   private readonly now;
   constructor(ids: readonly string[], options?: PoolOptions);
+  /** 设置改动后同步每账号的本地并发上限（已在跑的请求不会被踢掉）。 */
+  setMaxConcurrent(value: number): void;
   /** 让池与账号文档对齐：新增的进来，删掉的出去。已有账号的运行时状态保留。 */
   sync(ids: readonly string[]): void;
   list(): AccountRuntime[];
@@ -1183,6 +2066,13 @@ declare class CodeArtsAccountPool {
    * undefined。
    */
   pick(exclude?: ReadonlySet<string>, preferred?: string): string | undefined;
+  /**
+   * 只选指定的那一个账号，不做任何轮转回退。
+   *
+   * 手动指定账号后的固定模式用它：账号被禁用、在冷却或本地槽位满时返回
+   * undefined，由调用方给出「指定账号忙」的明确错误，绝不偷偷换号去扣另一个号。
+   */
+  pickOnly(id: string): string | undefined;
   /** 占一个本地槽位。占用失败（已满/不存在）返回 false。 */
   acquire(id: string): boolean;
   /** 释放槽位；重复释放不会把计数压到负数。 */
@@ -1394,6 +2284,16 @@ interface CodeArtsShim {
   token(): string;
   close(): Promise<void>;
 }
+/** 最近一次成功请求实际用的账号；卡片/弹层据此解释「为什么扣了另一个号」。 */
+interface CodeArtsAccountUse {
+  accountId: string;
+  model: string;
+  at: number;
+  /** 这次是否偏离了指定/会话粘住的账号。 */
+  fallback: boolean;
+  /** 回退原因（上游错误或本地槽位满）；没有回退时省略。 */
+  reason?: string;
+}
 interface CodeArtsShimOptions {
   store: CodeArtsAccountStore;
   catalog: CodeArtsCatalog;
@@ -1409,10 +2309,16 @@ interface CodeArtsShimOptions {
   /**
    * 用户在设置卡片里手动指定的账号 id（空 = 自动轮转）。
    *
-   * 只作为**首选**：指定的号不健康、在冷却或本地槽位已满时，仍按池的规则换号，
-   * 否则一条消息会因为「选中的号刚好忙」直接失败，这比自动换号更难用。
+   * 指定后默认是**固定账号**：账号忙/冷却/本地槽位满时直接报错，不换号。
+   * 只有 `allowAccountFallback()` 返回 true 时才按池的规则回退。
    */
   preferredAccount?: () => string | undefined;
+  /** 指定账号不可用时是否允许自动换号。默认 false（固定）。 */
+  allowAccountFallback?: () => boolean;
+  /** 每次成功开流后回报实际账号，供状态弹层显示「上次实际使用」。 */
+  onAccountUsed?: (info: CodeArtsAccountUse) => void;
+  /** 图片转述用的视觉模型 id；缺省 Qwen3-VL-235B。 */
+  imageBridgeModel?: () => string;
   logger?: ShimLogger;
 }
 declare function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim;
@@ -1613,9 +2519,27 @@ interface Config {
   /**
    * 手动指定优先使用的账号 id。空/未设置 = 自动轮转。
    *
-   * 只是「首选」：指定账号不可用时仍会换号，避免一条消息因为号忙而直接失败。
+   * 指定后默认是**固定账号**：账号忙/冷却/不可用时不会偷偷换号去扣另一个号；
+   * 要把「忙时允许换号」打开才会回退。自动轮转模式仍按会话粘性 + 回退。
    */
   preferredAccountId?: string;
+  /**
+   * 每账号本地并发上限。默认 3，与上游的 3 个流式会话对齐；
+   * 设为 1 可以强制串行。设置改动会立即作用到账号池。
+   */
+  maxConcurrentPerAccount?: number;
+  /**
+   * 手动指定账号后，账号忙/冷却时是否允许自动换到其它账号。默认 false（固定）。
+   * 自动轮转模式不受此开关影响。
+   */
+  allowAccountFallback?: boolean;
+  /**
+   * 图片转述：纯文本模型收到图片时，先用视觉模型转述成文字再发送。
+   * 打开后这些模型会临时声明可收图（标记为 imageBridge），DSH 才允许贴图。
+   */
+  imageBridgeEnabled?: boolean;
+  /** 图片转述使用的视觉模型，缺省 Qwen3-VL-235B。 */
+  imageBridgeModel?: string;
 }
 declare const Config: z<Config>;
 declare function apply(ctx: Context, rawConfig: Config): void;

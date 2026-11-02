@@ -133,7 +133,7 @@ function stubUpstream(options: { capTimes?: number; tpmTimes?: number } = {}): v
 
 async function start(
   accountIds: string[],
-  options: { capTimes?: number; tpmTimes?: number } = {},
+  options: { capTimes?: number; tpmTimes?: number; allowFallback?: boolean } = {},
   preferred?: string,
 ): Promise<void> {
   ids = accountIds
@@ -148,6 +148,7 @@ async function start(
     catalog: { current: () => [] } as never,
     pool,
     ...(preferred === undefined ? {} : { preferredAccount: () => preferred }),
+    ...(options.allowFallback === undefined ? {} : { allowAccountFallback: () => options.allowFallback === true }),
   })
   await shim.ready
   port = Number(new URL(shim.baseUrl()).port)
@@ -172,9 +173,20 @@ describe('cross-account failover', () => {
     expect(seenTokens[0]).toBe(TOKEN_B)
   })
 
-  it('falls back when the preferred account cannot take the request', async () => {
-    // A 正常、B 被禁用；指定 B 时必须直接落到 A，而不是卡在 B 上。
-    await start(['A', 'B'], { capTimes: 0 }, 'B')
+  it('pins a conversation to its first account when no account is preferred', async () => {
+    await start(['A', 'B'], { capTimes: 0 })
+    await post(port, bearer)
+    seenTokens = []
+
+    await post(port, bearer)
+
+    // 自动模式下第二条请求仍留在 A，而不是按 LRU 轮换到 B —— prompt cache 亲和。
+    expect(seenTokens).toEqual([TOKEN_A])
+  })
+
+  it('falls back when the preferred account cannot take the request and fallback is enabled', async () => {
+    // A 正常、B 被禁用；允许回退时直接落到 A，而不是卡在 B 上。
+    await start(['A', 'B'], { capTimes: 0, allowFallback: true }, 'B')
     // 先让池认识这两个号，再把 B 标成不可用（真实场景是凭据失效/冷却）。
     pool.sync(['A', 'B'])
     pool.disable('B', 'test')
@@ -182,6 +194,17 @@ describe('cross-account failover', () => {
 
     expect(res.status).toBe(200)
     expect(seenTokens).toEqual([TOKEN_A])
+  })
+
+  it('does not switch away from a fixed preferred account by default', async () => {
+    // 默认是固定账号：B 被禁用时宁可报错，也不去扣 A 的积分。
+    await start(['A', 'B'], { capTimes: 0 }, 'B')
+    pool.sync(['A', 'B'])
+    pool.disable('B', 'test')
+    const res = await post(port, bearer)
+
+    expect(res.status).toBe(400)
+    expect(seenTokens).toEqual([])
   })
 
   it('hands a capped request to the next account instead of waiting', async () => {
@@ -432,7 +455,7 @@ describe('no-account error message', () => {
   })
 
   it('says the local slots are full when every healthy account is busy', async () => {
-    // 两个在飞请求占满 A 的本地槽位（每账号 2 个），第三个应当立刻拿到
+    // 两个在飞请求占满 A 的本地槽位（这里显式用 2，默认已改成 3），第三个应当立刻拿到
     // 「槽位已满」而不是笼统的「没有可用账号」。
     ids = ['A']
     seenTokens = []
@@ -444,7 +467,7 @@ describe('no-account error message', () => {
       })
       return sseResponse(OK_CHUNKS)
     }))
-    pool = new CodeArtsAccountPool([])
+    pool = new CodeArtsAccountPool([], { maxConcurrent: 2 })
     shim = createCodeArtsShim({
       store: { ids: async () => ids, resolve: async (id: string) => credentialFor(id) } as never,
       catalog: { current: () => [] } as never,

@@ -32,6 +32,12 @@ export interface CodeArtsModelInfo {
   maxTokens: number
   supportsImages: boolean
   /**
+   * 图片不是模型原生支持的：请求层会先按原图发一次，被上游判 `not multimodal`
+   * 后再由视觉模型转述成文字重发。设置里的「图片转述」开关打开时，被图片黑名单
+   * 挡住的模型会临时带上这个标记。
+   */
+  imageBridge?: boolean
+  /**
    * 该模型可选的思考强度。
    *
    * 由动态发现填入（`POST /v1/model/thinking-variants`，按账号授予）：空/缺省表示
@@ -139,13 +145,16 @@ export class CodeArtsCatalog {
   private normalized: readonly CodeArtsModelInfo[] = []
   /** 上次归一化时图片黑名单的大小 —— 黑名单是运行时长的，变了就得重算。 */
   private normalizedWithBlocked = 0
+  /** 上次归一化时的转述开关状态。 */
+  private normalizedBridge = false
 
   current(): readonly CodeArtsModelInfo[] {
     // 归一化放在读取侧：`markImageBlocked` 是在发请求的过程中被调用的，那里拿不到
     // 目录对象；等下一次谁读目录时再纠正，不必等一小时后的那次发现。
-    if (this.normalizedWithBlocked !== imageBlocked.size) {
+    if (this.normalizedWithBlocked !== imageBlocked.size || this.normalizedBridge !== imageBridgeEnabled) {
       this.normalized = this.normalize(this.models)
       this.normalizedWithBlocked = imageBlocked.size
+      this.normalizedBridge = imageBridgeEnabled
     }
     return this.normalized
   }
@@ -154,16 +163,23 @@ export class CodeArtsCatalog {
     this.models = [...models]
     this.normalized = this.normalize(this.models)
     this.normalizedWithBlocked = imageBlocked.size
+    this.normalizedBridge = imageBridgeEnabled
   }
 
   /**
    * 上游清单爱把纯文本模型标成 `supports_images: true`（GLM-5.2、-1017 实测都这样），
-   * 被它骗过一次的模型在这里一律摘掉图片能力。
+   * 被它骗过一次的模型在这里一律摘掉图片能力；开了图片转述则改挂 `imageBridge`，
+   * 让宿主允许贴图，由请求层负责转述。
    */
   private normalize(models: readonly CodeArtsModelInfo[]): readonly CodeArtsModelInfo[] {
-    return models.map(model =>
-      model.supportsImages && isImageBlocked(model.id) ? { ...model, supportsImages: false } : model,
-    )
+    return models.map(model => {
+      // 黑名单模型不一定还带 supportsImages=true：种子表已经改成 false，只靠这条
+      // 字段判断会让「转述开关」永远开不起来。以 isImageBlocked 为准。
+      if (!isImageBlocked(model.id)) return model
+      return imageBridgeEnabled
+        ? { ...model, supportsImages: true, imageBridge: true }
+        : { ...model, supportsImages: false }
+    })
   }
 }
 
@@ -314,6 +330,20 @@ export function imageBlockedModels(): readonly string[] {
 /** 清空图片能力黑名单 —— 与福利标记一起，由手动刷新模型列表重置。 */
 export function clearImageBlocked(): void {
   imageBlocked.clear()
+}
+
+/**
+ * 图片转述开关。打开后，被黑名单挡住的纯文本模型会重新声明「可收图」，
+ * 但标记成 `imageBridge`：请求层先按原图试，首帧被上游拒了才转述重发。
+ */
+let imageBridgeEnabled = false
+
+export function setImageBridgeEnabled(enabled: boolean): void {
+  imageBridgeEnabled = enabled
+}
+
+export function isImageBridgeEnabled(): boolean {
+  return imageBridgeEnabled
 }
 
 /**

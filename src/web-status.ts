@@ -51,6 +51,8 @@ export const CODEARTS_LOGIN_STATUS_PATH = '/api/codearts/login/status'
 export const CODEARTS_ACCOUNTS_PATH = '/api/codearts/accounts'
 /** POST /api/codearts/account-preference { id } — 手动指定优先账号（空串/ null = 自动轮转）。 */
 export const CODEARTS_ACCOUNT_PREFERENCE_PATH = '/api/codearts/account-preference'
+/** GET/POST /api/codearts/image-bridge — 图片转述开关（纯文本模型用视觉模型转述图片）。 */
+export const CODEARTS_IMAGE_BRIDGE_PATH = '/api/codearts/image-bridge'
 /** POST /api/codearts/claim — 领一次福利中心的每日签到积分（幂等由上游按天去重）。 */
 export const CODEARTS_CLAIM_PATH = '/api/codearts/claim'
 /** POST /api/codearts/refresh-models — 立刻重拉一次模型目录，并清掉「福利今日不可用」标记。 */
@@ -77,11 +79,13 @@ export interface CodeArtsModelChoice {
   ratio?: string
   /** 支持图片输入（卡片据此挂「识图」Tag；纯文本模型缺省）。 */
   supportsImages?: boolean
+  /** 图片是先由视觉模型转述成文字再喂给它的，不是原生视觉。 */
+  imageBridge?: boolean
 }
 
 /** enabled-models 路由返回的 selection 文档（与 codebuddy 的 shape 对齐）。 */
 export interface CodeArtsModelSelection {
-  choices: { id: string; name: string; enabled: boolean; benefit?: boolean; blocked?: boolean; ratio?: string; supportsImages?: boolean }[]
+  choices: { id: string; name: string; enabled: boolean; benefit?: boolean; blocked?: boolean; ratio?: string; supportsImages?: boolean; imageBridge?: boolean }[]
   /** 已选子集是否小于全集（卡片据此显示不同提示）。 */
   restricted: boolean
   /** 是否可写（无 settings provider 时为 false，卡片只读）。 */
@@ -108,6 +112,7 @@ export function selectionOf(
     blocked: m.blocked,
     ratio: m.ratio,
     supportsImages: m.supportsImages,
+    imageBridge: m.imageBridge === true,
     enabled: restricted ? allowed.has(m.id) : true,
   }))
   return { choices, restricted, writable }
@@ -125,6 +130,7 @@ function choicesOf(deps: CodeArtsStatusRouteOptions): CodeArtsModelChoice[] {
       blocked: isBenefitBlocked(m.id),
       ...(ratio === undefined ? {} : { ratio }),
       ...(m.supportsImages === true ? { supportsImages: true } : {}),
+      ...(m.imageBridge === true ? { imageBridge: true } : {}),
     }
   })
 }
@@ -138,7 +144,12 @@ function choicesOf(deps: CodeArtsStatusRouteOptions): CodeArtsModelChoice[] {
 function modelBadgesOf(models: readonly CodeArtsModelInfo[]): CodeArtsWebModelBadge[] {
   return models.map(m => {
     const ratio = creditRatioLabel(m.ratio, isBenefitModel(m.id))
-    return { id: m.id, name: m.name, ...(ratio === undefined ? {} : { ratio }) }
+    return {
+      id: m.id,
+      name: m.name,
+      ...(ratio === undefined ? {} : { ratio }),
+      ...(m.imageBridge === true ? { imageBridge: true } : {}),
+    }
   })
 }
 
@@ -207,6 +218,22 @@ export function summarizeClaims(results: readonly CodeArtsClaimAccountResult[]):
   }
 }
 
+/** 最近一次成功请求实际用的账号，供弹层解释「为什么扣了另一个号」。 */
+export interface CodeArtsLastAccount {
+  accountId: string
+  model: string
+  at: number
+  fallback: boolean
+  reason?: string
+}
+
+/** 图片转述开关的卡片/弹层状态。 */
+export interface CodeArtsImageBridge {
+  enabled: boolean
+  model: string
+  writable: boolean
+}
+
 export interface CodeArtsWebStatus {
   status: 'signed-in' | 'signed-out' | 'expired'
   label?: string
@@ -219,6 +246,8 @@ export interface CodeArtsWebStatus {
    * 只是首选：该号不可用时仍会换号。
    */
   preferredAccountId?: string
+  /** 图片转述开关与使用的视觉模型。 */
+  imageBridge?: CodeArtsImageBridge
   /** 本机经插件发出的请求统计（账号总额度见 credits 字段，这里只记本机）。 */
   usage: CodeArtsWebUsage
   /**
@@ -238,6 +267,8 @@ export interface CodeArtsWebStatus {
    * 底部条本来就在轮询这个接口，所以开关搭车下发，不用多开一条链路。
    */
   dock?: CodeArtsDockFlags
+  /** 最近一次成功请求实际用的账号（含是否回退、原因）。 */
+  lastAccount?: CodeArtsLastAccount
   /**
    * 运行时解析到的 `@earendil-works/pi-ai` 不满足要求时的说明。
    * 有值 = 模型全跑不动（每条消息在出网前就失败），且这是版本装配问题，不是账号或网络。
@@ -292,6 +323,8 @@ export interface CodeArtsWebModelBadge {
    * 需要把这两件事分开拿，所以这里单列一个字段而不是让客户端去拆名字。
    */
   ratio?: string
+  /** 图片是先由视觉模型转述成文字再喂给它的，不是原生视觉。 */
+  imageBridge?: boolean
 }
 
 export interface CodeArtsStatusRouteOptions {
@@ -346,6 +379,12 @@ export interface CodeArtsStatusRouteOptions {
   preferredAccount?: () => string | undefined
   /** 写入优先账号；空串 = 恢复自动轮转。返回 false 表示没有 settings provider。 */
   setPreferredAccount?: (id: string) => Promise<boolean>
+  /** 最近一次成功请求实际使用的账号。省略则 /status 不带该字段。 */
+  lastAccount?: () => CodeArtsLastAccount | undefined
+  /** 图片转述开关当前值。省略则 /status 不带该字段。 */
+  imageBridge?: () => { enabled: boolean; model: string }
+  /** 写入图片转述开关；返回 false 表示没有 settings provider。 */
+  setImageBridge?: (patch: { enabled?: boolean; model?: string }) => Promise<boolean>
   /**
    * 丢掉积分缓存后重拉一次（弹层上那个「刷新积分」按钮）。
    * 省略时 `?force=1` 退回普通缓存读取 —— 顶多是不新鲜，不该报错。
@@ -503,13 +542,19 @@ async function buildStatus(deps: CodeArtsStatusRouteOptions, force = false): Pro
   const preference = deps.preferredAccount === undefined
     ? {}
     : { preferredAccountId: deps.preferredAccount() ?? '' }
+  const last = deps.lastAccount === undefined
+    ? {}
+    : { lastAccount: deps.lastAccount() }
+  const imageBridge = deps.imageBridge === undefined
+    ? {}
+    : { imageBridge: { ...deps.imageBridge(), writable: deps.setImageBridge !== undefined } }
   // pi-ai 版本不兼容时模型全不可用，但状态接口本身还能用 —— 原因必须在这里给出去，
   // 否则用户只看到每条消息一句「本轮运行失败」。
   const piAi = await probePiAiCompat()
   const compat = piAi === undefined ? {} : { piAiError: piAi }
 
   if (accounts.length === 0 || cred === undefined) {
-    return { status: 'signed-out', models, accounts, usage, ...dock, ...preference, ...compat }
+    return { status: 'signed-out', models, accounts, usage, ...dock, ...preference, ...last, ...imageBridge, ...compat }
   }
   // 只要还有**任意一个**账号能用就算登录中 —— 别的号过期了不影响轮转。
   const usable = accounts.some(accountUsable)
@@ -521,6 +566,8 @@ async function buildStatus(deps: CodeArtsStatusRouteOptions, force = false): Pro
     usage,
     ...dock,
     ...preference,
+    ...last,
+    ...imageBridge,
   }
   // 没有可用账号时不问积分：凭证都过期了，问了也是白跑一趟（还得等超时）。
   if (!usable) return { status: 'expired', ...identity, ...compat }
@@ -597,6 +644,74 @@ function dockHandler(deps: CodeArtsStatusRouteOptions) {
       return
     }
     json(res, 405, { error: 'method not allowed' })
+  }
+}
+
+/**
+ * GET/POST /api/codearts/image-bridge — 图片转述开关与视觉模型。
+ *
+ * 打开后，被图片黑名单挡住的纯文本模型会临时声明可收图（`imageBridge`），
+ * 由请求层先把图片转述成文字。关闭即恢复纯文本能力。
+ */
+function imageBridgeHandler(deps: CodeArtsStatusRouteOptions) {
+  const current = (): { enabled: boolean; model: string } =>
+    deps.imageBridge?.() ?? { enabled: false, model: 'Qwen3-VL-235B' }
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (!loopbackRequest(req)) {
+      json(res, 403, { error: 'request-not-trusted' })
+      return
+    }
+    if (req.method === 'GET') {
+      json(res, 200, {
+        imageBridge: { ...current(), writable: deps.setImageBridge !== undefined },
+      })
+      return
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { error: 'method not allowed' })
+      return
+    }
+    if (deps.setImageBridge === undefined) {
+      json(res, 403, { error: 'image-bridge-not-writable' })
+      return
+    }
+    const type = req.headers['content-type']
+    if (typeof type !== 'string' || !type.trim().toLowerCase().startsWith('application/json')) {
+      json(res, 415, { error: 'content-type must be application/json' })
+      return
+    }
+    try {
+      const body = JSON.parse(await readBody(req)) as { enabled?: unknown; model?: unknown }
+      const patch: { enabled?: boolean; model?: string } = {}
+      if (body.enabled !== undefined) {
+        if (typeof body.enabled !== 'boolean') {
+          json(res, 400, { error: 'expected {"enabled"?: boolean, "model"?: string}' })
+          return
+        }
+        patch.enabled = body.enabled
+      }
+      if (body.model !== undefined) {
+        if (typeof body.model !== 'string' || body.model.trim() === '') {
+          json(res, 400, { error: 'expected {"enabled"?: boolean, "model"?: string}' })
+          return
+        }
+        patch.model = body.model.trim()
+      }
+      if (patch.enabled === undefined && patch.model === undefined) {
+        json(res, 400, { error: 'expected {"enabled"?: boolean, "model"?: string}' })
+        return
+      }
+      const ok = await deps.setImageBridge(patch)
+      if (!ok) {
+        json(res, 403, { error: 'image-bridge-not-writable' })
+        return
+      }
+      json(res, 200, {
+        imageBridge: { ...current(), writable: true },
+      })
+    } catch (error: unknown) {
+      json(res, 500, { error: safeMessage(error) })
+    }
   }
 }
 
@@ -995,6 +1110,11 @@ export function registerCodeArtsStatusRoute(ctx: Context, deps: CodeArtsStatusRo
       path: CODEARTS_DOCK_PATH,
       handler: dockHandler(deps),
     })
+    const disposeImageBridge = ctx.webServer.register({
+      kind: 'exact',
+      path: CODEARTS_IMAGE_BRIDGE_PATH,
+      handler: imageBridgeHandler(deps),
+    })
     const disposeDebug = ctx.webServer.register({
       kind: 'exact',
       path: CODEARTS_DEBUG_PATH,
@@ -1013,6 +1133,7 @@ export function registerCodeArtsStatusRoute(ctx: Context, deps: CodeArtsStatusRo
       disposeRefresh()
       disposeQueue()
       disposeDock()
+      disposeImageBridge()
       disposeDebug()
       for (const s of activeLogins.values()) s.close()
       activeLogins.clear()

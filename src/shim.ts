@@ -19,16 +19,19 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { Readable } from 'node:stream'
 import type { CodeArtsAccountStore } from './auth.ts'
 import { CodeArtsAccountPool, ERROR_THRESHOLD, type AccountRuntime } from './account-pool.ts'
-import type { CodeArtsCatalog } from './catalog.ts'
+import { isImageBridgeEnabled, type CodeArtsCatalog } from './catalog.ts'
 import {
   canonicalModel,
   chatStream,
   degradeTokenCeiling,
   isConcurrencyCap,
+  isNotMultimodal,
   isParamInvalidFrame,
   isQueueableRate,
   isTpmLimit,
   IMAGE_UNSUPPORTED_MESSAGE,
+  DEFAULT_IMAGE_BRIDGE_MODEL,
+  bridgeImages,
   maxTokensCeilingFor,
   prepareChatBody,
   rateLimitFrame,
@@ -54,6 +57,17 @@ export interface CodeArtsShim {
   close(): Promise<void>
 }
 
+/** 最近一次成功请求实际用的账号；卡片/弹层据此解释「为什么扣了另一个号」。 */
+export interface CodeArtsAccountUse {
+  accountId: string
+  model: string
+  at: number
+  /** 这次是否偏离了指定/会话粘住的账号。 */
+  fallback: boolean
+  /** 回退原因（上游错误或本地槽位满）；没有回退时省略。 */
+  reason?: string
+}
+
 export interface CodeArtsShimOptions {
   store: CodeArtsAccountStore
   catalog: CodeArtsCatalog
@@ -69,10 +83,16 @@ export interface CodeArtsShimOptions {
   /**
    * 用户在设置卡片里手动指定的账号 id（空 = 自动轮转）。
    *
-   * 只作为**首选**：指定的号不健康、在冷却或本地槽位已满时，仍按池的规则换号，
-   * 否则一条消息会因为「选中的号刚好忙」直接失败，这比自动换号更难用。
+   * 指定后默认是**固定账号**：账号忙/冷却/本地槽位满时直接报错，不换号。
+   * 只有 `allowAccountFallback()` 返回 true 时才按池的规则回退。
    */
   preferredAccount?: () => string | undefined
+  /** 指定账号不可用时是否允许自动换号。默认 false（固定）。 */
+  allowAccountFallback?: () => boolean
+  /** 每次成功开流后回报实际账号，供状态弹层显示「上次实际使用」。 */
+  onAccountUsed?: (info: CodeArtsAccountUse) => void
+  /** 图片转述用的视觉模型 id；缺省 Qwen3-VL-235B。 */
+  imageBridgeModel?: () => string
   logger?: ShimLogger
 }
 
@@ -85,6 +105,76 @@ const KIND_STATUS: Readonly<Record<UpstreamErrorKind, number>> = {
   not_found: 502,
   server: 502,
   client: 400,
+}
+
+/**
+ * 原生带图被上游判「不是多模态」之后，多久内不再试原生、直接转述。
+ *
+ * 这个窗口不是能力缓存，而是「别每轮都白撞一次」：窗口过去后会再按原样试一次，
+ * 这样模型哪天真的支持识图了会自动切回原图，不需要改名单或重启插件。
+ */
+const IMAGE_BRIDGE_MEMO_MS = 10 * 60 * 1000
+const IMAGE_BRIDGE_MEMO_LIMIT = 256
+const imageBridgeNeededAt = new Map<string, number>()
+
+function modelMemoKey(model: string): string {
+  return model.trim().toLowerCase()
+}
+
+function imageBridgeRecentlyNeeded(model: string): boolean {
+  const key = modelMemoKey(model)
+  if (key === '') return false
+  const at = imageBridgeNeededAt.get(key)
+  if (at === undefined) return false
+  if (Date.now() - at < IMAGE_BRIDGE_MEMO_MS) return true
+  imageBridgeNeededAt.delete(key)
+  return false
+}
+
+function noteImageBridgeNeeded(model: string): void {
+  const key = modelMemoKey(model)
+  if (key === '') return
+  if (imageBridgeNeededAt.size >= IMAGE_BRIDGE_MEMO_LIMIT) {
+    const oldest = imageBridgeNeededAt.keys().next().value
+    if (oldest !== undefined) imageBridgeNeededAt.delete(oldest)
+  }
+  imageBridgeNeededAt.set(key, Date.now())
+}
+
+function clearImageBridgeNeeded(model: string): void {
+  const key = modelMemoKey(model)
+  if (key !== '') imageBridgeNeededAt.delete(key)
+}
+
+/** 从请求体里取模型 id（已经是 canonical 形式）；解析失败返回空串。 */
+function requestedModelOf(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { model?: unknown }
+    return typeof parsed.model === 'string' ? canonicalModel(parsed.model) : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 首帧是不是「这个模型不收图」。只认流内 `error` 对象里的错误码/文案，
+ * 不拿整帧做子串匹配 —— 正常回答里也可能出现 `not multimodal` 这几个词。
+ */
+function isNotMultimodalFrame(text: string): boolean {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const payload = trimmed.slice(5).trim()
+    if (payload === '' || payload === '[DONE]') continue
+    try {
+      const ev = JSON.parse(payload) as { error?: { code?: unknown; message?: unknown } }
+      if (ev.error !== undefined
+        && isNotMultimodal(String(ev.error.code ?? ''), String(ev.error.message ?? ''))) return true
+    } catch {
+      // 半帧/非 JSON：忽略
+    }
+  }
+  return false
 }
 
 function isJsonContentType(req: IncomingMessage): boolean {
@@ -189,6 +279,18 @@ const SERVER_COOLDOWN_MS = 30_000
 const ERROR_COOLDOWN_MS = 60_000
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+/** 可被客户端「停止生成」打断的等待。 */
+const sleepOrAbort = (ms: number, signal: AbortSignal): Promise<void> => new Promise(resolve => {
+  if (signal.aborted) {
+    resolve()
+    return
+  }
+  const timer = setTimeout(resolve, ms)
+  signal.addEventListener('abort', () => {
+    clearTimeout(timer)
+    resolve()
+  }, { once: true })
+})
 
 
 /**
@@ -249,6 +351,37 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
   const queue = options.queue
   // 账号池。空池起步，每次请求前用 store.ids() 对齐（新增/删除账号自动跟上）。
   const pool = options.pool ?? new CodeArtsAccountPool([])
+
+  /**
+   * 会话粘性表：chatId → 账号。自动轮转模式下，同一对话第一次选号后就钉住，
+   * 只有该号不可用时才换并改钉到新号 —— 这样 prompt cache 不会每条请求都被打散。
+   * 与上游的 chat_id 是同一份键；30 分钟没有新请求就过期。
+   */
+  const PIN_TTL_MS = 30 * 60 * 1000
+  const pins = new Map<string, { id: string; at: number }>()
+  function pinnedAccount(chatId: string): string | undefined {
+    if (chatId === '') return undefined
+    const pin = pins.get(chatId)
+    if (pin === undefined) return undefined
+    if (Date.now() - pin.at > PIN_TTL_MS) {
+      pins.delete(chatId)
+      return undefined
+    }
+    return pin.id
+  }
+  function pinAccount(chatId: string, id: string): void {
+    if (chatId === '') return
+    pins.set(chatId, { id, at: Date.now() })
+    // 极端长跑进程里别让这张表无限长。
+    if (pins.size > 1000) {
+      const oldest = pins.keys().next().value
+      if (oldest !== undefined) pins.delete(oldest)
+    }
+  }
+  /** 把某账号从所有会话钉号里摘掉（账号被删/停用/换号时）。 */
+  function unpinAccount(id: string): void {
+    for (const [chatId, pin] of pins) if (pin.id === id) pins.delete(chatId)
+  }
 
   const SHARED_SECRET = randomBytes(32).toString('base64url')
 
@@ -342,6 +475,10 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
    * 直接被拒），手工实测表必然滞后。而这类错误是**流内**帧（HTTP 仍 200），只能在
    * 第一帧判 —— 此时还没有任何内容产出，重发是安全的。降档结果记在 upstream 的
    * 进程内表里，该模型后续请求直接从新上限起步，不必每轮再白撞一次。
+   *
+   * 图片走**原生优先**：先按原样发图；首帧被判 `not multimodal` 才转述后重发一次。
+   * 这样模型哪天真的支持识图了会自动切回原图，而不是被「人工实测黑名单」永久
+   * 挡在转述后面。同一个模型在 10 分钟内只白试一次原生，之后直接转述。
    */
   async function openWithCeilingHeal(
     credential: CodeArtsResolved,
@@ -349,33 +486,94 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     contextWindow: number,
     signal: AbortSignal,
   ): Promise<{ prepared: PreparedChatBody; result: ChatResult; head?: Uint8Array }> {
-    for (let heal = 0; ; heal += 1) {
-      const prepared = prepareChatBody(raw, contextWindow)
+    const imageRequest = raw.includes('"image_url"')
+    const bridgeEnabled = imageRequest && isImageBridgeEnabled()
+    const requestedModel = imageRequest ? requestedModelOf(raw) : ''
+    const bridgeModel = options.imageBridgeModel?.() ?? DEFAULT_IMAGE_BRIDGE_MODEL
+    let effectiveRaw = raw
+    let bridged = false
+
+    // 最近刚被拒过：这 10 分钟内直接转述，省掉一次必然失败的请求。
+    if (bridgeEnabled && requestedModel !== '' && imageBridgeRecentlyNeeded(requestedModel)) {
+      const bridgedResult = await bridgeImages(credential, raw, bridgeModel, signal)
+      if (!bridgedResult.ok) {
+        return {
+          prepared: prepareChatBody(raw, contextWindow),
+          result: { ok: false, kind: 'client', status: 400, message: bridgedResult.message },
+        }
+      }
+      effectiveRaw = bridgedResult.body
+      bridged = true
+    }
+
+    for (let heal = 0; ; ) {
+      const prepared = prepareChatBody(effectiveRaw, contextWindow)
       if (prepared.error !== undefined) {
         return { prepared, result: { ok: false, kind: 'client', status: 400, message: prepared.error } }
       }
       const result = await chatStream(credential, prepared, signal)
-      if (!result.ok) return { prepared, result }
+      if (!result.ok) {
+        // HTTP 非 2xx 的 not-multimodal：同样只在还没转述过时兜底一次。
+        if (!bridged && bridgeEnabled && isNotMultimodal('', result.message)) {
+          noteImageBridgeNeeded(prepared.model || requestedModel)
+          logger?.warn(`dsh-codearts-connect: ${prepared.model} 原生带图被拒，改用图片转述重发`)
+          const bridgedResult = await bridgeImages(credential, raw, bridgeModel, signal)
+          if (!bridgedResult.ok) {
+            return {
+              prepared: prepareChatBody(raw, contextWindow),
+              result: { ok: false, kind: 'client', status: 400, message: bridgedResult.message },
+            }
+          }
+          effectiveRaw = bridgedResult.body
+          bridged = true
+          continue
+        }
+        return { prepared, result }
+      }
       const reader = result.stream.getReader()
       const first = await reader.read()
       const head = first.done ? undefined : first.value
+      const headText = head === undefined ? '' : new TextDecoder().decode(head)
+      // 首帧就是「这个模型不收图」：此时还没有任何内容产出，转述后重发是安全的。
+      if (!bridged && bridgeEnabled && head !== undefined && isNotMultimodalFrame(headText)) {
+        reader.releaseLock()
+        await result.stream.cancel().catch(() => {})
+        noteImageBridgeNeeded(prepared.model || requestedModel)
+        logger?.warn(`dsh-codearts-connect: ${prepared.model} 原生带图被拒，改用图片转述重发`)
+        const bridgedResult = await bridgeImages(credential, raw, bridgeModel, signal)
+        if (!bridgedResult.ok) {
+          return {
+            prepared: prepareChatBody(raw, contextWindow),
+            result: { ok: false, kind: 'client', status: 400, message: bridgedResult.message },
+          }
+        }
+        effectiveRaw = bridgedResult.body
+        bridged = true
+        continue
+      }
       // 首帧就是限流错误（TPM 实测是 HTTP 200 + 流内 error_code）：此时一个字都没
       // 吐出来，重发是安全的。必须在这里降级成真正的请求失败，交给下面的排队逻辑；
       // 否则错误会被当成正常流转发，DSH 侧只看到一句英文 PI_AI_ERROR。
-      const rate = head === undefined ? undefined : rateLimitFrame(new TextDecoder().decode(head))
+      const rate = head === undefined ? undefined : rateLimitFrame(headText)
       if (rate !== undefined) {
         reader.releaseLock()
         await result.stream.cancel().catch(() => {})
         logger?.warn(`dsh-codearts-connect: ${prepared.model} 首帧被判限流（${rate.code}），进入本地排队`)
         return { prepared, result: { ok: false, kind: 'soft_rate', status: 429, message: `${rate.code}: ${rate.message}` } }
       }
-      const shouldHeal = heal < MAX_CEILING_HEALS && head !== undefined && isParamInvalidFrame(new TextDecoder().decode(head))
+      const shouldHeal = heal < MAX_CEILING_HEALS && head !== undefined && isParamInvalidFrame(headText)
       reader.releaseLock()
-      if (!shouldHeal) return { prepared, result, head }
+      if (!shouldHeal) {
+        // 原生带图这次没被判 not multimodal，说明模型当前确实能收图：把 10 分钟
+        // 的负缓存清掉，后续请求继续走原生。
+        if (!bridged && imageRequest) clearImageBridgeNeeded(prepared.model)
+        return { prepared, result, head }
+      }
       await result.stream.cancel().catch(() => {})
       if (degradeTokenCeiling(prepared.model) === 0) {
         return { prepared, result: { ok: false, kind: 'client', status: 400, message: `${prepared.model}: max_tokens 已降到下限仍被判参数非法` } }
       }
+      heal += 1
       logger?.warn(`dsh-codearts-connect: ${prepared.model} 被判参数非法，max_tokens 降档到 ${maxTokensCeilingFor(prepared.model)} 后重发`)
     }
   }
@@ -446,8 +644,8 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       writeOpenAIError(res, 400, 'context_overflow', checked.error)
       return
     }
-    // 已经知道这个模型不收图（人工实测或运行时被拒过）时，本地直接给一句人话：
-    // 省掉一次必然失败的上游请求，也别让用户对着 «not multimodal» 猜自己哪里错了。
+    // 转述开关关着、且这个模型已知不收图（人工实测或运行时被拒过）时，本地直接给
+    // 一句人话：省掉一次必然失败的上游请求，也别让用户对着 «not multimodal» 猜。
     const wantsImage = raw.includes('"image_url"') || raw.includes('"type":"image"')
     const modelInfo = catalog.current().find(model => model.id.toLowerCase() === checked.model.toLowerCase())
     if (wantsImage && modelInfo?.supportsImages === false) {
@@ -476,10 +674,58 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     }
     pool.sync(ids)
 
-    // 手动指定只在**第一次**尝试时生效：指定的号撞上并发上限/坏掉之后，后续
-    // 尝试仍走正常轮转，避免「指定了一个号就再也问不动」。
+    // 手动指定优先账号；默认是固定账号，只有 allowAccountFallback 打开才允许回退。
     const preferred = options.preferredAccount?.()
     const preferredId = preferred !== undefined && ids.includes(preferred) ? preferred : undefined
+    const strict = preferredId !== undefined && options.allowAccountFallback?.() !== true
+    // 自动轮转也按会话粘性：同一对话钉在第一次成功的账号上，保住 prompt cache。
+    const pinned = pinnedAccount(checked.chatId)
+    const anchorId = preferredId ?? pinned
+
+    if (strict) {
+      let only = pool.pickOnly(preferredId)
+      if (only === undefined) {
+        let runtime = pool.get(preferredId)
+        // 只是短时冷却（上游 5xx / 本地网络抖动，默认 30 秒）时原地等它恢复。
+        // 固定模式不能换号；如果这里立刻回 429，宿主会自动重试 5 次，用户看到的
+        // 就是一串 429 —— 比安静地等 30 秒难用得多。
+        if (runtime !== undefined && !runtime.disabled && Date.now() < runtime.coolUntil) {
+          const waitMs = Math.min(runtime.coolUntil - Date.now() + 500, 45_000)
+          if (waitMs > 0) {
+            logger?.warn(`dsh-codearts-connect: 指定账号冷却中，固定模式原地等待 ${Math.ceil(waitMs / 1000)}s`)
+            await sleepOrAbort(waitMs, controller.signal)
+            if (controller.signal.aborted) return
+            only = pool.pickOnly(preferredId)
+            runtime = pool.get(preferredId)
+          }
+        }
+        // 本地槽位满（同一账号有别的请求在飞）也短暂等一下，别马上甩 429。
+        if (only === undefined && runtime !== undefined && !runtime.disabled && Date.now() >= runtime.coolUntil) {
+          for (let i = 0; i < 10 && only === undefined; i += 1) {
+            await sleepOrAbort(1_000, controller.signal)
+            if (controller.signal.aborted) return
+            only = pool.pickOnly(preferredId)
+          }
+        }
+        if (only === undefined) {
+          const now = Date.now()
+          const why = runtime === undefined
+            ? '已不在账号列表里'
+            : runtime.disabled
+              ? '已被停用或凭据失效'
+              : now < runtime.coolUntil
+                ? `冷却中（约 ${Math.max(1, Math.ceil((runtime.coolUntil - now) / 1000))} 秒）`
+                : '本地并发槽位已满'
+          writeOpenAIError(
+            res,
+            runtime?.disabled === true || runtime === undefined ? 400 : 429,
+            runtime?.disabled === true || runtime === undefined ? 'preferred_unavailable' : 'preferred_busy',
+            `指定账号${why}。当前是固定账号模式，不会切换到其它账号；可在积分弹层切到「自动轮转」，或稍后重试。`,
+          )
+          return
+        }
+      }
+    }
 
     // 先按账号轮换：某个账号的会话槽位被占（要 ~52s 才释放）就换下一个用，
     // 而不是让用户干等 —— 这正是「打断后重新提问」卡住的根因。
@@ -490,16 +736,25 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     let lastKind: UpstreamErrorKind | undefined
     let lastStatus = 0
     let lastMessage = ''
+    /** 这次请求偏离了指定/粘住的账号时，记下原因给状态弹层看。 */
+    let fallbackReason: string | undefined
 
     for (let attempt = 0; attempt < MAX_ROTATE; attempt += 1) {
-      const id = pool.pick(tried, attempt === 0 ? preferredId : undefined)
+      const id = strict
+        ? (attempt === 0 ? pool.pickOnly(preferredId) : undefined)
+        : pool.pick(tried, attempt === 0 ? anchorId : undefined)
       if (id === undefined) break
       tried.add(id)
+      if (attempt === 0 && anchorId !== undefined && id !== anchorId) {
+        fallbackReason = fallbackReason ?? '原账号不可用'
+      }
       if (!pool.acquire(id)) continue
       try {
         const credential = await store.resolve(id)
         if (credential === undefined) {
           pool.disable(id, 'no credential')
+          unpinAccount(id)
+          if (strict) break
           continue
         }
         // 上游排队要客户端自己挂号：先占号、轮询到 working 再发聊天请求。
@@ -531,6 +786,14 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
         }
         if (result.ok) {
           pool.noteSuccess(id)
+          pinAccount(checked.chatId, id)
+          options.onAccountUsed?.({
+            accountId: id,
+            model: prepared.model,
+            at: Date.now(),
+            fallback: anchorId !== undefined && id !== anchorId,
+            ...fallbackReason === undefined ? {} : { reason: fallbackReason },
+          })
           await pipeToResponse(res, result.stream, controller.signal, { accountId: id, model: prepared.model }, opened.head)
           return
         }
@@ -543,6 +806,8 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
           // 明确**不**冷却 —— 冷却会让它在接下来一分钟彻底不可用，误伤后续请求。
           pool.noteConcurrencyCap(id)
           cappedAccount = id
+          if (strict) break
+          fallbackReason = fallbackReason ?? `并发上限：${result.message.slice(0, 120)}`
           continue
         }
         if (isTpmLimit(result)) {
@@ -552,12 +817,17 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
           break
         }
         if (result.kind === 'session_dead') {
-          // 凭据失效，这个号得重新登录了，换下一个。
+          // 凭据失效，这个号得重新登录了；固定模式下直接报，不偷偷换号。
           pool.disable(id, result.message)
+          unpinAccount(id)
+          if (strict) break
+          fallbackReason = fallbackReason ?? `凭据失效：${result.message.slice(0, 120)}`
           continue
         }
         if (result.kind === 'server' || result.kind === 'soft_rate') {
           pool.cooldown(id, SERVER_COOLDOWN_MS, result.message)
+          if (strict) break
+          fallbackReason = fallbackReason ?? `上游错误：${result.message.slice(0, 120)}`
           break
         }
         // 其余（400/404 等）：换号只会拿到同样的错，直接报。
@@ -590,6 +860,14 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
             }
             if (result.ok) {
               pool.noteSuccess(queueAccount)
+              pinAccount(checked.chatId, queueAccount)
+              options.onAccountUsed?.({
+                accountId: queueAccount,
+                model: opened.prepared.model,
+                at: Date.now(),
+                fallback: anchorId !== undefined && queueAccount !== anchorId,
+                ...fallbackReason === undefined ? {} : { reason: fallbackReason },
+              })
               await pipeToResponse(res, result.stream, controller.signal, { accountId: queueAccount, model: opened.prepared.model }, opened.head)
               return
             }

@@ -25,6 +25,8 @@ interface ModelChoice {
   ratio?: string
   /** 支持图片输入（挂「识图」Tag；纯文本模型缺省）。 */
   supportsImages?: boolean
+  /** 图片由视觉模型转述后喂给这个模型，不是原生视觉。 */
+  imageBridge?: boolean
 }
 
 interface ModelSelectionDoc {
@@ -1260,7 +1262,11 @@ export function CodeArtsPluginCard({ t }: CodeArtsPluginCardInjected): React.Rea
                           </Tag>
                         )}
                         {choice.ratio !== undefined && <Tag tone="quiet">{choice.ratio}</Tag>}
-                        {choice.supportsImages === true && <Tag tone="quiet">{t('modelImages')}</Tag>}
+                        {choice.supportsImages === true && (
+                          choice.imageBridge === true
+                            ? <Tag tone="quiet">{t('modelImagesBridge')}</Tag>
+                            : <Tag tone="quiet">{t('modelImages')}</Tag>
+                        )}
                       </div>
                     ))}
                   </div>

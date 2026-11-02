@@ -163,9 +163,18 @@ export function createCodeArtsAdapter(options: CodeArtsAdapterOptions): CodeArts
     ...REQUEST_IMAGE_BUDGETS,
     piProvider: provider,
   }
-  const profile = profileFields as unknown as ResolvedPiAiProviderProfile
 
-  let profiles = new Map<string, ResolvedPiAiProviderProfile>([[CODEARTS_PROVIDER, profile]])
+  /**
+   * 每次 invalidate 都重建 piProvider 的 `models` 数组，而不是复用创建时的快照。
+   * DSH 的模型目录来自 `profile.piProvider.models`，只重置 profiles 指向同一个对象
+   * 不会带上新的图片能力；图片转述开关切换后就靠这里让 `input` 从 text 变成 text+image。
+   */
+  const buildProfile = (): ResolvedPiAiProviderProfile => ({
+    ...profileFields,
+    piProvider: { ...provider, models: buildModels() },
+  } as unknown as ResolvedPiAiProviderProfile)
+
+  let profiles = new Map<string, ResolvedPiAiProviderProfile>([[CODEARTS_PROVIDER, buildProfile()]])
 
   const adapter = new CodeArtsPiAiAdapter(catalog, enabledModels, {
     profiles: () => profiles,
@@ -177,7 +186,7 @@ export function createCodeArtsAdapter(options: CodeArtsAdapterOptions): CodeArts
   return {
     adapter,
     invalidate: () => {
-      profiles = new Map<string, ResolvedPiAiProviderProfile>([[CODEARTS_PROVIDER, profile]])
+      profiles = new Map<string, ResolvedPiAiProviderProfile>([[CODEARTS_PROVIDER, buildProfile()]])
     },
   }
 }

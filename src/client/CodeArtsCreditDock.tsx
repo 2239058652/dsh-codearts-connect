@@ -21,9 +21,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactElement, type MouseEvent } from 'react'
-import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Checkbox, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CodeArtsDockFlags, CodeArtsWebStatus } from '../web-status.ts'
-import { stripModelSuffixes } from '../catalog.ts'
 import { DOCK_SEGMENT_SEPARATOR } from './dock-line.ts'
 import {
   ensureSuppressStyle,
@@ -36,12 +35,16 @@ import {
 const CODEARTS_PROVIDER = 'codearts'
 const STATUS_PATH = '/api/codearts/status'
 const QUEUE_PATH = '/api/codearts/queue'
+/** POST { id } 手动指定优先账号；id 为空 = 自动轮转。 */
+const PREFERENCE_PATH = '/api/codearts/account-preference'
+/** POST { enabled } 图片转述开关。 */
+const IMAGE_BRIDGE_PATH = '/api/codearts/image-bridge'
 /** 轮询间隔：与缓存 TTL（60s）对齐，再短也只是反复命中缓存。 */
 const REFRESH_INTERVAL_MS = 60_000
 /** 排队位置变得快：官方客户端也是 5 秒一次；这是本机路由，打不疼上游。 */
 const QUEUE_INTERVAL_MS = 5_000
 /** 弹层宽度固定，好算它会不会顶出屏幕右边。 */
-const PANEL_WIDTH = 280
+const PANEL_WIDTH = 360
 /** 弹层与那一行之间的缝隙。 */
 const PANEL_GAP = 8
 /** 那一行在输入框下方，往上开才够空间；给弹层留的最小高度，不够就翻到下面。 */
@@ -176,17 +179,21 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
   const [remain, setRemain] = useState<number | null>(null)
   const [total, setTotal] = useState<number>(0)
   const [rows, setRows] = useState<CreditRow[]>([])
-  /**
-   * 模型 id -> 目录条目（显示名 + 已格式化的倍率）。
-   *
-   * 显示名自带 ` · x0.18` 尾巴，倍率单独放一段，所以两个都要拿：
-   * 名字用 `stripModelSuffixes` 剥掉尾巴，倍率直接用服务端算好的 `ratio`。
-   */
-  const [modelInfo, setModelInfo] = useState<Record<string, { name: string; ratio?: string }>>({})
   const [flags, setFlags] = useState<CodeArtsDockFlags>({ credits: true, queue: true })
+  /** 最近一次成功请求实际用的账号；由 /status 带回，用来解释是否发生了回退。 */
+  const [lastAccount, setLastAccount] = useState<CodeArtsWebStatus['lastAccount']>(undefined)
+  /** 手动指定的优先账号；空串 = 自动轮转。弹层里据此标出「当前使用」。 */
+  const [preferredId, setPreferredId] = useState('')
   const [queued, setQueued] = useState<QueueEntry | null>(null)
   const [anchor, setAnchor] = useState<Anchor | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  /** 正在切换的账号 id；'__auto__' 表示切回自动轮转。 */
+  const [switching, setSwitching] = useState<string | null>(null)
+  const [switchError, setSwitchError] = useState<string | null>(null)
+  /** 图片转述开关（由 /status 下发）。 */
+  const [imageBridge, setImageBridge] = useState<CodeArtsWebStatus['imageBridge']>(undefined)
+  const [bridgeSaving, setBridgeSaving] = useState(false)
+  const [bridgeError, setBridgeError] = useState<string | null>(null)
   const mounted = useRef(true)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -210,10 +217,9 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
       if (data === undefined || !mounted.current) return
       setFlags(data.dock ?? { credits: true, queue: true })
       setRows(rowsOf(data))
-      setModelInfo(Object.fromEntries((data.models ?? []).map(model => [model.id, {
-        name: model.name,
-        ...model.ratio === undefined ? {} : { ratio: model.ratio },
-      }])))
+      setPreferredId(data.preferredAccountId?.trim() ?? '')
+      setLastAccount(data.lastAccount)
+      setImageBridge(data.imageBridge)
       // 多账号时把各号余额加在一起：底部条只表达「这台机器上还能用多少」。
       const snapshots = (data.creditsByAccount ?? [])
         .map(entry => entry.credits)
@@ -236,6 +242,9 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
     if (!active) {
       setRemain(null)
       setRows([])
+      setPreferredId('')
+      setLastAccount(undefined)
+      setImageBridge(undefined)
       setAnchor(null)
       return
     }
@@ -334,27 +343,18 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
 
   const showCredits = flags.credits && remain !== null
   const showQueue = flags.queue && queued !== null
+  /** 指定账号还在已存列表里才算数（设置里可能残留已删除的 id）。 */
+  const preferredRow = preferredId === '' ? undefined : rows.find(row => row.id === preferredId)
+  const lastRow = lastAccount === undefined ? undefined : rows.find(row => row.id === lastAccount.accountId)
+  const lastName = lastRow?.name ?? lastAccount?.accountId
   // 开关都关了（或没有数据）就整条不渲染，别再留一个空节点占位。
   if (!showCredits && !showQueue) return null
 
-  // 底栏只留一个小图标：积分数字 + `Provider · Model · 倍率` 一起常驻时，这条
-  // **所有插件共用**的 composer dock 行会被撑得很宽，把宿主自己的金额/token 统计
-  // 挤掉。现在整条信息都收进弹层 —— 图标只负责开面板，标题里保留完整读法。
+  // 底栏只留一个小图标：积分数字常驻会把这条**所有插件共用**的 composer dock 行
+  // 撑宽，把宿主自己的金额/token 统计挤掉。模型名与倍率在模型选择器里已经看得到，
+  // 弹层只保留积分明细与当前账号，不再重复一遍。
   //
   // 只有图标是可点击的；排队段（事件性文案）仍以纯文本跟在后面，只在等开流时出现。
-  const modelId = currentOf(selection)?.model
-  const entry = modelId === undefined ? undefined : modelInfo[modelId]
-  // 名字剥掉 ` · x0.18` 尾巴：倍率单独成段，面板里不会出现两次。
-  const modelLabel = entry === undefined
-    ? modelId ?? ''
-    : stripModelSuffixes(entry.name)
-  const ratio = entry?.ratio
-  const identity = [
-    t('dockProvider', { provider: 'CodeArts' }),
-    modelLabel === '' ? t('dockNoModel') : t('dockModel', { model: modelLabel }),
-    ...ratio === undefined ? [] : [ratio],
-  ].join(DOCK_SEGMENT_SEPARATOR)
-
   const queueTitle = queued === null
     ? undefined
     : t('queueDockTitle', { model: queued.model, position: queued.position, length: queued.length })
@@ -381,6 +381,56 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
     }
   }
 
+  /** 弹层里点账号行直接切换优先账号；null = 恢复自动轮转。 */
+  const chooseAccount = async (id: string | null): Promise<void> => {
+    if (switching !== null) return
+    setSwitching(id ?? '__auto__')
+    setSwitchError(null)
+    try {
+      const res = await fetch(PREFERENCE_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: unknown; preferredAccountId?: unknown }
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`)
+      }
+      setPreferredId(typeof data.preferredAccountId === 'string' ? data.preferredAccountId : id ?? '')
+    } catch (error: unknown) {
+      setSwitchError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  /** 打开/关闭图片转述：服务端会同步改模型能力，DSH 随后允许或禁止贴图。 */
+  const toggleImageBridge = async (enabled: boolean): Promise<void> => {
+    if (imageBridge === undefined || !imageBridge.writable || bridgeSaving) return
+    setBridgeSaving(true)
+    setBridgeError(null)
+    try {
+      const res = await fetch(IMAGE_BRIDGE_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: unknown
+        imageBridge?: CodeArtsWebStatus['imageBridge']
+      }
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`)
+      }
+      if (data.imageBridge !== undefined) setImageBridge(data.imageBridge)
+      else setImageBridge({ ...imageBridge, enabled })
+    } catch (error: unknown) {
+      setBridgeError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBridgeSaving(false)
+    }
+  }
+
   return (
     <div
       ref={rootRef}
@@ -400,7 +450,7 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
         flex: '0 0 auto',
         minWidth: 'max-content',
       }}
-      title={[identity, creditsTitle, queueTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
+      title={[creditsTitle, queueTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
     >
       {/*
         整条底栏只剩一个图标：数字与被挤掉的模型信息都收进弹层，把 composer dock
@@ -414,7 +464,7 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
           aria-haspopup="dialog"
           aria-expanded={anchor !== null}
           aria-label={t('creditsDockPanelTitle')}
-          title={[identity, creditsTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
+          title={[creditsTitle].filter(Boolean).join(DOCK_SEGMENT_SEPARATOR)}
           onClick={toggle}
           style={{
             all: 'unset',
@@ -481,8 +531,43 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
             </Button>
           </div>
 
-          {/* 底栏只剩图标，Provider / Model / 倍率收在这里，点开仍能看全。 */}
-          <div style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>{identity}</div>
+          {/* 弹层只留积分与当前账号；模型名/倍率在模型选择器里已经有了。 */}
+          <div style={{ color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }}>
+            {preferredRow !== undefined
+              ? t('creditsDockCurrentAccount', { name: preferredRow.name })
+              : t('creditsDockCurrentAuto')}
+          </div>
+
+          {lastAccount !== undefined && (
+            <div
+              style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}
+              title={lastAccount.reason}
+            >
+              {t('creditsDockLastAccount', { name: lastName ?? lastAccount.accountId })}
+              {lastAccount.fallback ? ` · ${t('creditsDockFallback')}` : ''}
+            </div>
+          )}
+
+          {imageBridge !== undefined && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Checkbox
+                checked={imageBridge.enabled}
+                disabled={!imageBridge.writable || bridgeSaving}
+                onChange={on => void toggleImageBridge(on)}
+                label={t('imageBridgeToggle', { model: imageBridge.model })}
+              />
+              {!imageBridge.writable && (
+                <span style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 11 }}>
+                  {t('imageBridgeNotWritable')}
+                </span>
+              )}
+              {bridgeError !== null && (
+                <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 11 }}>
+                  {t('imageBridgeFailed', { message: bridgeError })}
+                </span>
+              )}
+            </div>
+          )}
 
           <div
             style={{
@@ -501,10 +586,29 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
               <span style={{ gridColumn: '1 / -1' }}>{t('creditsDockEmpty')}</span>
             )}
             {rows.map(row => (
-              <div
+              <button
                 key={row.id}
+                type="button"
+                disabled={switching !== null}
+                title={t('creditsDockSwitchHint')}
+                onClick={() => void chooseAccount(row.id)}
                 style={{
-                  display: 'contents',
+                  gridColumn: '1 / -1',
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  alignItems: 'center',
+                  gap: '4px 12px',
+                  width: '100%',
+                  margin: 0,
+                  padding: '2px 0',
+                  border: 0,
+                  borderRadius: 4,
+                  background: preferredId === row.id ? 'var(--dsw-alias-bg-layer-3)' : 'transparent',
+                  color: 'inherit',
+                  font: 'inherit',
+                  textAlign: 'left',
+                  cursor: switching === null ? 'pointer' : 'wait',
+                  opacity: switching !== null && switching !== row.id ? 0.6 : 1,
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -520,13 +624,64 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
                   >
                     {row.name}
                   </span>
+                  {preferredId === row.id && (
+                    <span
+                      style={{
+                        flex: 'none',
+                        padding: '0 4px',
+                        borderRadius: 4,
+                        background: 'var(--dsw-alias-bg-layer-3)',
+                        color: 'var(--dsw-alias-label-secondary)',
+                        fontSize: 11,
+                        lineHeight: '16px',
+                      }}
+                    >
+                      {t('accountInUse')}
+                    </span>
+                  )}
                 </span>
                 <span style={{ justifySelf: 'end', fontVariantNumeric: 'tabular-nums' }}>
                   {row.remain === null ? '—' : formatNumber(row.remain)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
+
+          {rows.length > 1 && (
+            <p style={{ margin: 0, color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>
+              {t('creditsDockSwitchHint')}
+            </p>
+          )}
+
+          {preferredId !== '' && (
+            <button
+              type="button"
+              disabled={switching !== null}
+              onClick={() => void chooseAccount(null)}
+              style={{
+                alignSelf: 'flex-start',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                margin: 0,
+                padding: 0,
+                border: 0,
+                background: 'none',
+                color: 'var(--dsw-alias-brand-text)',
+                font: 'inherit',
+                fontSize: 12,
+                cursor: switching === null ? 'pointer' : 'wait',
+              }}
+            >
+              {t('creditsDockAuto')}
+            </button>
+          )}
+
+          {switchError !== null && (
+            <p style={{ margin: 0, color: 'var(--dsw-alias-state-error-primary)', fontSize: 12 }}>
+              {t('creditsDockSwitchFailed', { message: switchError })}
+            </p>
+          )}
 
           {rows
             .filter(row => row.expiring > 0)

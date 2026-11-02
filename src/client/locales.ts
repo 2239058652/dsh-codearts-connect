@@ -44,6 +44,7 @@ export interface CodeArtsSettingsKey {
   benefitBlocked: string
   benefitBlockedHint: string
   modelImages: string
+  modelImagesBridge: string
   refreshModels: string
   refreshing: string
   refreshed: string
@@ -97,6 +98,16 @@ export interface CodeArtsSettingsKey {
   creditsDock: string
   creditsDockTitle: string
   creditsDockPanelTitle: string
+  creditsDockCurrentAccount: string
+  creditsDockCurrentAuto: string
+  creditsDockSwitchHint: string
+  creditsDockAuto: string
+  creditsDockSwitchFailed: string
+  creditsDockLastAccount: string
+  creditsDockFallback: string
+  imageBridgeToggle: string
+  imageBridgeNotWritable: string
+  imageBridgeFailed: string
   creditsDockRefresh: string
   creditsDockRefreshing: string
   creditsDockColAccount: string
@@ -174,6 +185,7 @@ export const zh: CodeArtsSettingsKey = {
   benefitBlocked: '福利今日不可用',
   benefitBlockedHint: '{n} 个福利模型今天被上游判定没有权益（活动领完或渠道未开），发出去会直接报 benefit not found。',
   modelImages: '识图',
+  modelImagesBridge: '识图·转述',
   refreshModels: '刷新模型列表',
   refreshing: '刷新中…',
   refreshed: '已刷新：{n} 个模型，其中 {benefit} 个走福利路由',
@@ -227,6 +239,16 @@ export const zh: CodeArtsSettingsKey = {
   creditsDock: '积分 {remain}',
   creditsDockTitle: 'CodeArts 剩余积分 {remain} / {total}',
   creditsDockPanelTitle: 'CodeArts 积分',
+  creditsDockCurrentAccount: '当前使用：{name}',
+  creditsDockCurrentAuto: '当前使用：自动轮转',
+  creditsDockSwitchHint: '点击账号行切换优先账号',
+  creditsDockAuto: '自动轮转',
+  creditsDockSwitchFailed: '切换失败：{message}',
+  creditsDockLastAccount: '上次实际使用：{name}',
+  creditsDockFallback: '回退',
+  imageBridgeToggle: '用 {model} 转述图片（纯文本模型可用）',
+  imageBridgeNotWritable: '当前宿主不允许修改这个开关。',
+  imageBridgeFailed: '图片转述设置失败：{message}',
   creditsDockRefresh: '刷新积分',
   creditsDockRefreshing: '刷新中…',
   creditsDockColAccount: '账号',
@@ -303,6 +325,7 @@ export const en: CodeArtsSettingsKey = {
   benefitBlocked: 'Benefit unavailable today',
   benefitBlockedHint: '{n} benefit model(s) were told they have no entitlement today (campaign exhausted or channel not opened); sending to them fails with benefit not found.',
   modelImages: 'Images',
+  modelImagesBridge: 'Images (captioned)',
   refreshModels: 'Refresh models',
   refreshing: 'Refreshing…',
   refreshed: 'Refreshed: {n} models, {benefit} on the benefit route',
@@ -356,6 +379,16 @@ export const en: CodeArtsSettingsKey = {
   creditsDock: 'Credits {remain}',
   creditsDockTitle: 'CodeArts credits left {remain} / {total}',
   creditsDockPanelTitle: 'CodeArts credits',
+  creditsDockCurrentAccount: 'In use: {name}',
+  creditsDockCurrentAuto: 'In use: automatic rotation',
+  creditsDockSwitchHint: 'Click an account row to prefer it',
+  creditsDockAuto: 'Automatic rotation',
+  creditsDockSwitchFailed: 'Switch failed: {message}',
+  creditsDockLastAccount: 'Last used: {name}',
+  creditsDockFallback: 'fallback',
+  imageBridgeToggle: 'Caption images with {model} (for text-only models)',
+  imageBridgeNotWritable: 'This host does not allow changing this switch.',
+  imageBridgeFailed: 'Image bridge setting failed: {message}',
   creditsDockRefresh: 'Refresh credits',
   creditsDockRefreshing: 'Refreshing…',
   creditsDockColAccount: 'Account',
