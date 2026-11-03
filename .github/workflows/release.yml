@@ -1,15 +1,14 @@
 name: Publish Package
 
-# 发布 npm 包：
-#   - GitHub Packages：用 GITHUB_TOKEN 发布 @<owner>/dsh-codearts-connect（打 tag 发布 release 时触发）
-#   - npmjs：用 npm Trusted Publisher（OIDC）发布 dsh-codearts-connect，免 token、免 OTP
+# 发布 GitHub Packages：
+#   - 用 GITHUB_TOKEN 发布 @<owner>/dsh-codearts-connect（打 tag 发布 Release 时触发）
+#   - 本项目不发布到 npmjs；npm 发布任务已移除，无需 npm 账号或 Trusted Publisher。
 # 触发：GitHub Release 发布（打 tag 发布 release 即触发）或手动 workflow_dispatch。
 #
 # 前置（一次性）：
-#   1. 在 npmjs.com 的包设置页配置 Trusted Publisher：
-#      GitHub Actions / 2239058652 / dsh-codearts-connect / release.yml
-#      （GitHub Packages 不接受无 scope 包名，所以那一路上传时会临时改名成
-#       @2239058652/dsh-codearts-connect，仓库源码里的包名保持不变。）
+#   无需额外配置；GitHub Packages 使用仓库内置的 GITHUB_TOKEN。
+#   （GitHub Packages 不接受无 scope 包名，所以上传时会临时改名成
+#    @2239058652/dsh-codearts-connect，仓库源码里的包名保持不变。）
 on:
   release:
     types: [published]
@@ -52,31 +51,9 @@ jobs:
       - run: pnpm run build
       - name: Retag as scoped package for GitHub Packages
         # 只在 CI 里临时把包名改成 @<owner>/dsh-codearts-connect，
-        # 不动仓库源码里 npmjs 用的无 scope 包名 dsh-codearts-connect
+        # 不动仓库源码里的无 scope 包名 dsh-codearts-connect
         run: npm pkg set name="$NPM_SCOPE/dsh-codearts-connect"
       - name: Publish
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-npmjs:
-    name: Publish to npmjs (OIDC)
-    needs: verify
-    # npm Trusted Publisher（OIDC）：workflow 必须有 id-token: write，
-    # npm CLI 自动检测 OIDC 环境并换取一次性发布凭证，无需任何 npm token。
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # OIDC 必需
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          # 注意：不设 registry-url —— OIDC 握手由 npm CLI 自动完成，
-          # 显式 .npmrc 认证反而会干扰 trusted publisher 流程。
-          node-version: '24' # 内置 npm >= 11，满足 OIDC/trusted publishing 要求
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - name: Publish with provenance
-        run: npm publish --provenance --access public
