@@ -24,7 +24,9 @@ import {
   canonicalModel,
   chatStream,
   degradeTokenCeiling,
+  firstFrameError,
   isConcurrencyCap,
+  isIamTokenError,
   isNotMultimodal,
   isParamInvalidFrame,
   isQueueableRate,
@@ -102,6 +104,7 @@ const KIND_STATUS: Readonly<Record<UpstreamErrorKind, number>> = {
   hard_credit: 402,
   soft_rate: 429,
   session_dead: 401,
+  iam_stale: 401,
   not_found: 502,
   server: 502,
   client: 400,
@@ -161,20 +164,13 @@ function requestedModelOf(raw: string): string {
  * 不拿整帧做子串匹配 —— 正常回答里也可能出现 `not multimodal` 这几个词。
  */
 function isNotMultimodalFrame(text: string): boolean {
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('data:')) continue
-    const payload = trimmed.slice(5).trim()
-    if (payload === '' || payload === '[DONE]') continue
-    try {
-      const ev = JSON.parse(payload) as { error?: { code?: unknown; message?: unknown } }
-      if (ev.error !== undefined
-        && isNotMultimodal(String(ev.error.code ?? ''), String(ev.error.message ?? ''))) return true
-    } catch {
-      // 半帧/非 JSON：忽略
-    }
-  }
-  return false
+  const error = firstFrameError(text)
+  return error !== undefined && isNotMultimodal(error.code, error.message)
+}
+
+/** 把首帧错误拼成 `code: message`（两边可能有一边为空）。 */
+function errorDetail(error: { code: string; message: string }): string {
+  return `${error.code}: ${error.message}`.replace(/^: /, '').replace(/: $/, '')
 }
 
 function isJsonContentType(req: IncomingMessage): boolean {
@@ -469,6 +465,28 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
   }
 
   /**
+   * 上游判 IAM token 失效时，强制续期一次。
+   *
+   * 同一个请求里每个账号只续一次；`forceRefresh` 还会检查 token 是否已被别的
+   * 请求换过，避免把一次性的 refresh_token 白烧掉。
+   */
+  async function refreshAfterIam(
+    accountId: string,
+    credential: CodeArtsResolved,
+    refreshed: Set<string>,
+  ): Promise<CodeArtsResolved | undefined> {
+    if (refreshed.has(accountId)) return undefined
+    refreshed.add(accountId)
+    logger?.warn(`dsh-codearts-connect: ${accountId} 的 IAM token 被判失效，强制续期后重试`)
+    try {
+      return await store.forceRefresh(accountId, credential.token)
+    } catch (error: unknown) {
+      logger?.warn(`dsh-codearts-connect: ${accountId} 强制续期失败`, error)
+      return undefined
+    }
+  }
+
+  /**
    * 打开上游流；撞到「参数非法」就把该模型的 max_tokens 上限折半降一档再开一次。
    *
    * 上游的 max_tokens 上限由服务端控制、会漂（GLM-5.2 标称 131072，2026-10-10 起
@@ -482,6 +500,8 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
    */
   async function openWithCeilingHeal(
     credential: CodeArtsResolved,
+    accountId: string,
+    refreshed: Set<string>,
     raw: string,
     contextWindow: number,
     signal: AbortSignal,
@@ -513,6 +533,18 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       }
       const result = await chatStream(credential, prepared, signal)
       if (!result.ok) {
+        // HTTP 非 2xx 也可能带 IAM 失效；先续期重试，再谈换号/报错。
+        if (isIamTokenError(result.message)) {
+          const next = await refreshAfterIam(accountId, credential, refreshed)
+          if (next !== undefined) {
+            credential = next
+            continue
+          }
+          return {
+            prepared,
+            result: { ok: false, kind: 'iam_stale', status: 401, message: result.message },
+          }
+        }
         // HTTP 非 2xx 的 not-multimodal：同样只在还没转述过时兜底一次。
         if (!bridged && bridgeEnabled && isNotMultimodal('', result.message)) {
           noteImageBridgeNeeded(prepared.model || requestedModel)
@@ -534,6 +566,22 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
       const first = await reader.read()
       const head = first.done ? undefined : first.value
       const headText = head === undefined ? '' : new TextDecoder().decode(head)
+      // IAM 失效优先于图片判断：先续期重试，别把凭据问题误当成模型不吃图。
+      const frameError = head === undefined ? undefined : firstFrameError(headText)
+      if (frameError !== undefined && isIamTokenError(errorDetail(frameError))) {
+        reader.releaseLock()
+        await result.stream.cancel().catch(() => {})
+        const detail = errorDetail(frameError)
+        const next = await refreshAfterIam(accountId, credential, refreshed)
+        if (next !== undefined) {
+          credential = next
+          continue
+        }
+        return {
+          prepared,
+          result: { ok: false, kind: 'iam_stale', status: 401, message: detail },
+        }
+      }
       // 首帧就是「这个模型不收图」：此时还没有任何内容产出，转述后重发是安全的。
       if (!bridged && bridgeEnabled && head !== undefined && isNotMultimodalFrame(headText)) {
         reader.releaseLock()
@@ -590,6 +638,8 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
    */
   async function openStream(
     credential: CodeArtsResolved,
+    accountId: string,
+    refreshed: Set<string>,
     raw: string,
     contextWindow: number,
     signal: AbortSignal,
@@ -598,7 +648,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     const until = started + CAP_WAIT_LIMIT
     let gap = CAP_RETRY_GAP
     for (;;) {
-      const opened = await openWithCeilingHeal(credential, raw, contextWindow, signal)
+      const opened = await openWithCeilingHeal(credential, accountId, refreshed, raw, contextWindow, signal)
       const waitedMs = Date.now() - started
       if (opened.result.ok || signal.aborted) return { ...opened, waitedMs }
       if (!isQueueableRate(opened.result)) return { ...opened, waitedMs }
@@ -730,6 +780,8 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
     // 先按账号轮换：某个账号的会话槽位被占（要 ~52s 才释放）就换下一个用，
     // 而不是让用户干等 —— 这正是「打断后重新提问」卡住的根因。
     const tried = new Set<string>()
+    /** 本请求里已强制续期过的账号；一个号只续一次，别把刷新 token 烧掉。 */
+    const iamRefreshed = new Set<string>()
     let cappedAccount: string | undefined
     let tpmAccount: string | undefined
     let queueWaitedMs = 0
@@ -775,7 +827,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
             return
           }
         }
-        const opened = await openWithCeilingHeal(credential, raw, contextWindow, controller.signal)
+        const opened = await openWithCeilingHeal(credential, id, iamRefreshed, raw, contextWindow, controller.signal)
         const { prepared, result } = opened
         // 用户点「停止生成」时这次上游调用会以 AbortError 失败。那**不是账号故障**，
         // 必须在这里就返回：放它落到下面的分类里，每打断一次就会把这个账号冷却 30 秒，
@@ -816,6 +868,14 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
           tpmAccount = id
           break
         }
+        if (result.kind === 'iam_stale') {
+          // 已经强制续期过一次仍失效：这个号的 refresh_token 多半也死了。
+          // 冷却而不是直接禁用，给重新登录/上游恢复留出口。
+          pool.cooldown(id, SERVER_COOLDOWN_MS, result.message)
+          if (strict) break
+          fallbackReason = fallbackReason ?? `IAM 续期失败：${result.message.slice(0, 120)}`
+          continue
+        }
         if (result.kind === 'session_dead') {
           // 凭据失效，这个号得重新登录了；固定模式下直接报，不偷偷换号。
           pool.disable(id, result.message)
@@ -850,7 +910,7 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
         try {
           const credential = await store.resolve(queueAccount)
           if (credential !== undefined) {
-            const opened = await openStream(credential, raw, contextWindow, controller.signal)
+            const opened = await openStream(credential, queueAccount, iamRefreshed, raw, contextWindow, controller.signal)
             const { result } = opened
             queueWaitedMs = opened.waitedMs
             // 同上：客户端主动中止不算账号故障，不要拿它去回写池状态。
@@ -870,6 +930,10 @@ export function createCodeArtsShim(options: CodeArtsShimOptions): CodeArtsShim {
               })
               await pipeToResponse(res, result.stream, controller.signal, { accountId: queueAccount, model: opened.prepared.model }, opened.head)
               return
+            }
+            // 强制续期也救不回来：短时冷却，别让下一条消息立刻再撞一次。
+            if (result.kind === 'iam_stale') {
+              pool.cooldown(queueAccount, SERVER_COOLDOWN_MS, result.message)
             }
             lastKind = result.kind
             lastStatus = result.status

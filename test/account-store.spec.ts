@@ -245,6 +245,42 @@ describe('per-account refresh', () => {
     expect(results.map(r => r?.token)).toEqual(['fresh', 'fresh', 'fresh'])
   })
 
+  it('force-refreshes even when the token is nowhere near expiry', async () => {
+    refreshTokenMock.mockResolvedValue(token({ userId: 'uid-a', securityToken: 'fresh' }))
+    const store = new CodeArtsAccountStore(accountsPath)
+    await store.upsert(credential('uid-a'))
+
+    const next = await store.forceRefresh('uid-a', 'sts-token')
+
+    expect(refreshTokenMock).toHaveBeenCalledTimes(1)
+    expect(next?.token).toBe('fresh')
+    expect((await store.credential('uid-a'))?.token).toBe('fresh')
+  })
+
+  it('does not refresh again when another request already rotated the token', async () => {
+    const store = new CodeArtsAccountStore(accountsPath)
+    await store.upsert(credential('uid-a'))
+
+    const next = await store.forceRefresh('uid-a', 'rotated-elsewhere')
+
+    expect(refreshTokenMock).not.toHaveBeenCalled()
+    expect(next?.token).toBe('sts-token')
+  })
+
+  it('single-flights concurrent force refreshes', async () => {
+    slowRefresh(token({ userId: 'uid-a', securityToken: 'fresh' }))
+    const store = new CodeArtsAccountStore(accountsPath)
+    await store.upsert(credential('uid-a'))
+
+    const results = await Promise.all([
+      store.forceRefresh('uid-a', 'sts-token'),
+      store.forceRefresh('uid-a', 'sts-token'),
+    ])
+
+    expect(refreshTokenMock).toHaveBeenCalledTimes(1)
+    expect(results.map(r => r?.token)).toEqual(['fresh', 'fresh'])
+  })
+
   it('a sign-in during an in-flight refresh is not overwritten by it', async () => {
     let release: (value: unknown) => void = () => {}
     refreshTokenMock.mockImplementation(() => new Promise(resolve => { release = resolve }))

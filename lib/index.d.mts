@@ -1769,7 +1769,7 @@ interface OAuthToken {
 //#endregion
 //#region src/upstream.d.ts
 declare const SNAP_HOST = "https://snap-access.cn-north-4.myhuaweicloud.com";
-type UpstreamErrorKind = 'hard_credit' | 'soft_rate' | 'session_dead' | 'not_found' | 'server' | 'client';
+type UpstreamErrorKind = 'hard_credit' | 'soft_rate' | 'session_dead' | 'iam_stale' | 'not_found' | 'server' | 'client';
 interface ChatResultOk {
   ok: true;
   /** 已转成 OpenAI 增量 SSE 的 ReadableStream（文本，data: ...\n\n）。 */
@@ -2016,6 +2016,13 @@ declare class CodeArtsAccountStore {
   clear(): Promise<void>;
   /** 给 shim 用：解析某账号的签名材料（内部含续期）。 */
   resolve(id: string): Promise<ResolvedCredential | undefined>;
+  /**
+   * 上游报 IAM token 失效时强制续期。
+   *
+   * `seenToken` 是这次请求实际用的 token：若别的请求已经换过凭证，就别再刷一次
+   * （refresh_token 会轮换，白刷一次就多一次失败风险）。
+   */
+  forceRefresh(id: string, seenToken?: string): Promise<ResolvedCredential | undefined>;
 }
 //#endregion
 //#region src/account-pool.d.ts

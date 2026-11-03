@@ -435,11 +435,34 @@ class AccountSlot {
     const exp = cred.expiration ? Date.parse(cred.expiration) : NaN
     const soon = Number.isNaN(exp) ? false : exp - Date.now() < REFRESH_SKEW_MS
     if (!soon) return cred
-    const inflight = this._inflight ??= this.refresh(cred, {
+    return this.refreshOnce(cred, {
       refreshToken: cred.refreshToken,
       dpopPrivateKey: cred.dpopPrivateKey,
       clientId: cred.clientId,
-    }).finally(() => {
+    })
+  }
+
+  /**
+   * 不管还剩多久，立刻续期一次。
+   *
+   * 给上游回 `invalid_iam_token` 时用：token 可能被提前作废（另一个客户端续期、
+   * 上游轮换），而 `expiration` 还写着几小时之后，`ensureFresh` 根本不会动。
+   * 仍然走单飞，避免并发请求把一次性的 refresh_token 烧掉。
+   */
+  async forceRefresh(): Promise<CodeArtsCredential> {
+    const cred = this._cred
+    if (cred.stale === true) return cred
+    if (!cred.refreshToken || !cred.dpopPrivateKey || !cred.clientId) return cred
+    return this.refreshOnce(cred, {
+      refreshToken: cred.refreshToken,
+      dpopPrivateKey: cred.dpopPrivateKey,
+      clientId: cred.clientId,
+    })
+  }
+
+  /** 单飞刷新：同一账号同一时刻只允许一个 refresh 在飞。 */
+  private refreshOnce(cred: CodeArtsCredential, mat: RefreshMaterials): Promise<CodeArtsCredential> {
+    const inflight = this._inflight ??= this.refresh(cred, mat).finally(() => {
       this._inflight = undefined
     })
     return inflight
@@ -706,12 +729,32 @@ export class CodeArtsAccountStore {
     await this.loaded()
     const slot = this._slots.get(id)
     if (slot === undefined) return undefined
-    const cred = await slot.ensureFresh()
-    return {
-      token: cred.token,
-      accessKeyId: cred.accessKeyId,
-      secretAccessKey: cred.secretAccessKey,
-      securityToken: cred.token,
+    return resolvedOf(await slot.ensureFresh())
+  }
+
+  /**
+   * 上游报 IAM token 失效时强制续期。
+   *
+   * `seenToken` 是这次请求实际用的 token：若别的请求已经换过凭证，就别再刷一次
+   * （refresh_token 会轮换，白刷一次就多一次失败风险）。
+   */
+  async forceRefresh(id: string, seenToken?: string): Promise<ResolvedCredential | undefined> {
+    await this.loaded()
+    const slot = this._slots.get(id)
+    if (slot === undefined) return undefined
+    if (seenToken !== undefined && slot.credential.token !== seenToken) {
+      return resolvedOf(slot.credential)
     }
+    return resolvedOf(await slot.forceRefresh())
+  }
+}
+
+/** 把持久化凭证收窄成 shim 需要的签名材料。 */
+function resolvedOf(cred: CodeArtsCredential): ResolvedCredential {
+  return {
+    token: cred.token,
+    accessKeyId: cred.accessKeyId,
+    secretAccessKey: cred.secretAccessKey,
+    securityToken: cred.token,
   }
 }

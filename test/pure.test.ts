@@ -9,6 +9,8 @@ import {
   canonicalModel,
   degradeTokenCeiling,
   estimateTokens,
+  firstFrameError,
+  isIamTokenError,
   isTpmLimit,
   maxTokensCeilingFor,
   prepareChatBody,
@@ -315,6 +317,18 @@ describe('TPM rate limiting', () => {
     expect(rateLimitFrame(openai)?.code).toBe('InferHub.ModelArts.81111.429')
     expect(rateLimitFrame(legacy)?.code).toBe('InferHub.ModelArts.81114.429')
     expect(rateLimitFrame('data: {"choices":[{"delta":{"content":"你好"}}]}\n\n')).toBeUndefined()
+  })
+
+  // IAM 失效是流内首帧，必须能从转换成 OpenAI 形状的帧里取出来；
+  // 三种措辞都见过，且不能把普通正文里的同词误判。
+  it('detects first-frame IAM failures and extracts their detail', () => {
+    const openai = 'data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}],"error":{"code":"APIG.0301","message":"Incorrect IAM authentication"}}\n\n'
+    const legacy = 'data: {"error_code":"invalid_iam_token","error_msg":"invalid_iam_token"}\n\n'
+    expect(firstFrameError(openai)).toEqual({ code: 'APIG.0301', message: 'Incorrect IAM authentication' })
+    expect(firstFrameError(legacy)).toEqual({ code: 'invalid_iam_token', message: 'invalid_iam_token' })
+    expect(isIamTokenError('APIG.0301: Incorrect IAM authentication')).toBe(true)
+    expect(isIamTokenError('invalid_iam_token')).toBe(true)
+    expect(isIamTokenError('data: {"choices":[{"delta":{"content":"not multimodal"}}]}\\n\\n')).toBe(false)
   })
 
   // 用户看到的必须是「不是你的错、可以怎么办」，而不是英文错误码。

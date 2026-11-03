@@ -3,7 +3,7 @@
 本文件记录本插件的重要改动。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.3.0] - 2026-10-31
+## [1.3.0] - 2026-11-03
 
 本项目从 `dsh-codearts` 改名为 `dsh-codearts-connect`，仓库迁移到
 <https://github.com/2239058652/dsh-codearts-connect>，基于原项目（MIT）二次开发。
@@ -43,6 +43,11 @@
 
 ### 修复
 
+- **IAM token 被提前作废时不再干等**：上游以流内首帧回 `invalid_iam_token` /
+  `Incorrect IAM authentication` / `APIG.0301` 时，旧逻辑只看 `expiration`、要等到
+  快过期才续期，于是每条消息都撞同一堵墙。现在识别到这类错误会强制续期一次、用
+  同一个账号重试；续期失败才冷却账号。同一请求内每个账号只续一次，并发请求也不会
+  重复烧一次性的 `refresh_token`。
 - **固定账号短时冷却不再连环 429**：指定账号因上游 5xx / 本地网络抖动进入 30 秒冷却时，
   固定模式改为原地等它恢复再试同一个号（最多 45 秒），不再立刻返回 429 让宿主自动重试 5 次；
   账号停用/凭据失效时返回不可重试的 400，并明确提示切「自动轮转」或重新登录。

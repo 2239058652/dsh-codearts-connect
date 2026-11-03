@@ -47,7 +47,7 @@ const EP_QUEUE_STATUS = '/api/v1/queue/status'
  */
 const EP_CURRENT_USER = '/snap-manager/v1/current/user'
 
-export type UpstreamErrorKind = 'hard_credit' | 'soft_rate' | 'session_dead' | 'not_found' | 'server' | 'client'
+export type UpstreamErrorKind = 'hard_credit' | 'soft_rate' | 'session_dead' | 'iam_stale' | 'not_found' | 'server' | 'client'
 
 export interface ChatResultOk {
   ok: true
@@ -458,6 +458,9 @@ export function upstreamErrorMessage(message: string, status = 0): string {
   if (message.toLowerCase().includes('model is not registered')) {
     return '上游没有注册这个模型，它可能已经下线；请刷新模型列表后重选。'
   }
+  if (isIamTokenError(message)) {
+    return '上游判定登录凭据（IAM token）已失效，插件已尝试自动续期；若反复出现，请到设置卡片重新登录。'
+  }
   if (isNotMultimodal('', message)) return IMAGE_UNSUPPORTED_MESSAGE
   if (message.startsWith('图片转述失败')) return message
   return `codearts 上游错误 (http ${status}): ${message.slice(0, 400)}`
@@ -494,6 +497,55 @@ export function isNotMultimodal(code: string, message: string): boolean {
 }
 
 /**
+ * 上游判定本次请求的 IAM 凭据无效。
+ *
+ * 2026-11-02 实测：它会以**流内首帧**（HTTP 200）的形式回来，内容只有一句
+ * `invalid_iam_token`，所以既不走 classify() 也不会触发换号。措辞有三套：
+ * IAM 自身、APIG 网关、非法 Token 链路。
+ */
+const IAM_TOKEN_ERROR =
+  /invalid_iam_token|incorrect iam authentication|apig\.0301|iam token is invalid|iam token (?:has )?expired|decrypt token fail/i
+
+export function isIamTokenError(message: string): boolean {
+  return IAM_TOKEN_ERROR.test(message)
+}
+
+/**
+ * 从流内首帧里取上游错误码与文本；没有错误返回 undefined。
+ *
+ * 只用于「还没产出任何内容」的判断：此时重发是安全的。帧可能被 TCP 切断，
+ * 解析不出来就当没有错误，绝不影响转发。
+ */
+export interface FirstFrameError {
+  code: string
+  message: string
+}
+
+export function firstFrameError(text: string): FirstFrameError | undefined {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const payload = trimmed.slice(5).trim()
+    if (payload === '' || payload === '[DONE]') continue
+    let ev: {
+      error?: { code?: unknown; message?: unknown }
+      error_code?: unknown
+      error_msg?: unknown
+    }
+    try {
+      ev = JSON.parse(payload) as typeof ev
+    } catch {
+      continue
+    }
+    const code = String(ev.error?.code ?? ev.error_code ?? '')
+    const message = String(ev.error?.message ?? ev.error_msg ?? '')
+    if (code === '' && message === '') continue
+    return { code, message }
+  }
+  return undefined
+}
+
+/**
  * 带图请求撞上纯文本模型时给用户看的话。
  *
  * 上游只会回一句英文 `The request model is not multimodal`，用户会以为是插件坏了；
@@ -517,6 +569,9 @@ export function isResignRefusal(message: string): boolean {
 function classify(status: number, message: string): UpstreamErrorKind {
   const m = message.toLowerCase()
   if (isResignRefusal(message)) return 'client'
+  // 先认措辞再认状态码：IAM 失效有时挂在 401 上，但它的处置是「强制续期重试」，
+  // 不是「停用账号等重新登录」。
+  if (isIamTokenError(message)) return 'iam_stale'
   if (status === 401 || status === 403) return 'session_dead'
   if (status === 402) return 'hard_credit'
   if (status === 429) return 'soft_rate'
