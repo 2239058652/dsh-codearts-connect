@@ -52,6 +52,7 @@ export default defineConfig([
         '@deepseek-ai/dsh-api-session-controller',
         '@deepseek-ai/dsh-client-locale',
         'react',
+        'react-dom',
         'react/jsx-runtime',
         'react/jsx-dev-runtime',
       ],

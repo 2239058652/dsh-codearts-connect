@@ -20,7 +20,7 @@
  * 不会因为这条 dock 让上游多挨一次请求；弹层上那个「刷新积分」是唯一绕缓存的出口。
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactElement, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement, type MouseEvent, type ReactNode, type ReactPortal } from 'react'
 import { Button, Checkbox, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CodeArtsDockFlags, CodeArtsWebStatus } from '../web-status.ts'
 import { DOCK_SEGMENT_SEPARATOR } from './dock-line.ts'
@@ -33,6 +33,14 @@ import {
 
 /** 与 src/adapter.ts 的 CODEARTS_PROVIDER 对齐 —— client 不能 import host 模块。 */
 const CODEARTS_PROVIDER = 'codearts'
+/**
+ * 宿主的 composer 在 0.2.2 起是「docked」容器，slot 文档明确要求 fixed 浮层
+ * portal 到 document.body；直接挂在 slot 里会被祖先的裁剪/containment 吃掉。
+ * 客户端 bundle 是 CJS，`require('react-dom')` 由宿主模块加载器提供。
+ */
+const createPortal = (require('react-dom') as {
+  createPortal: (children: ReactNode, container: Element | DocumentFragment) => ReactPortal
+}).createPortal
 const STATUS_PATH = '/api/codearts/status'
 const QUEUE_PATH = '/api/codearts/queue'
 /** POST { id } 手动指定优先账号；id 为空 = 自动轮转。 */
@@ -494,14 +502,15 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
           <span>{t('queueDock', { position: queued.position })}</span>
         </>
       )}
-      {anchor !== null && (
+      {anchor !== null && createPortal(
         <div
           ref={panelRef}
           role="dialog"
           aria-label={t('creditsDockPanelTitle')}
           style={{
-            // fixed 而不是 absolute：宿主那一行外面任何一层 overflow:hidden 都会把
-            // absolute 的浮层裁掉，fixed 只认视口，不受祖先裁剪。
+            // fixed + createPortal 到 document.body：0.2.2 的 composer 是 docked 容器，
+            // slot 文档明确要求 fixed 浮层 portal 出去，否则会被祖先的
+            // containment/overflow 裁掉（只改 fixed 不够）。
             position: 'fixed',
             left: anchor.left,
             top: anchor.top,
@@ -705,7 +714,8 @@ export function CodeArtsCreditDock({ useProjection, t }: CodeArtsCreditDockProps
               {t('creditsDockUpdated', { time: lastUpdated })}
             </span>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
