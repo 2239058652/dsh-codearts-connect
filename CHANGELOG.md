@@ -3,6 +3,15 @@
 本文件记录本插件的重要改动。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] - 2026-11-06
+
+### 修复
+
+- **DSH 0.2.2 积分弹层被裁掉**：0.2.2 的 composer 变成 docked 容器，slot 文档要求
+  fixed 浮层 portal 到 `document.body`；弹层现在通过 `createPortal` 挂到 body，保留
+  原来的 fixed 定位与外部点击/滚动关闭逻辑。构建时把 `react-dom` 作为宿主外部模块，
+  不打包进插件。
+
 ## [1.3.0] - 2026-11-03
 
 本项目从 `dsh-codearts` 改名为 `dsh-codearts-connect`，仓库迁移到
